@@ -150,7 +150,7 @@ const GameUI = () => {
         </div>
 
         <div className="game-mode-content">
-          {mode === 'multiplayer' ? <MultiplayerMode /> : <BotMode />}
+          {mode === 'multiplayer' ? <MultiplayerMode onGameWin={refetchPlayerWinnings} /> : <BotMode onGameWin={refetchPlayerWinnings} />}
         </div>
         
         {isOwner && (

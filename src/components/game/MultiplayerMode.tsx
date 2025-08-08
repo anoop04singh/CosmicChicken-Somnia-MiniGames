@@ -1,11 +1,12 @@
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useWatchContractEvent } from 'wagmi';
 import { contractAddress, contractAbi } from '@/lib/abi';
 import { parseEther, formatEther } from 'viem';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { showSuccess } from '@/utils/toast';
 
-const MultiplayerMode = () => {
+const MultiplayerMode = ({ onGameWin }: { onGameWin: () => void; }) => {
   const { address } = useAccount();
   const { data: hash, writeContract, isPending, reset } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
@@ -25,6 +26,21 @@ const MultiplayerMode = () => {
   });
 
   const [timeLeft, setTimeLeft] = useState(0);
+
+  useWatchContractEvent({
+    address: contractAddress,
+    abi: contractAbi,
+    eventName: 'RoundFinished',
+    onLogs(logs) {
+      logs.forEach(log => {
+        const { winner, prizeAmount } = log.args;
+        if (winner && prizeAmount && address && winner.toLowerCase() === address.toLowerCase()) {
+          showSuccess(`You won the round! Prize: ${formatEther(prizeAmount as bigint)} STT. Added to your balance.`);
+          onGameWin();
+        }
+      });
+    },
+  });
 
   useEffect(() => {
     const interval = setInterval(() => {

@@ -1,4 +1,4 @@
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useWatchContractEvent } from 'wagmi';
 import { contractAddress, contractAbi } from '@/lib/abi';
 import { parseEther, formatEther } from 'viem';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,7 @@ import { showError, showSuccess } from '@/utils/toast';
 
 const BOT_ROUND_DURATION = 30; // seconds
 
-const BotMode = () => {
+const BotMode = ({ onGameWin }: { onGameWin: () => void; }) => {
   const { address } = useAccount();
   const animationFrameRef = useRef<number | null>(null);
 
@@ -34,6 +34,21 @@ const BotMode = () => {
     functionName: 'getBotGameInfo',
     args: [activeGameId as bigint],
     enabled: !!activeGameId && Number(activeGameId) > 0,
+  });
+
+  useWatchContractEvent({
+    address: contractAddress,
+    abi: contractAbi,
+    eventName: 'BotGameEnded',
+    onLogs(logs) {
+      logs.forEach(log => {
+        const { player, playerWon, payout } = log.args;
+        if (player && playerWon && payout && address && player.toLowerCase() === address.toLowerCase()) {
+          showSuccess(`You won! Payout: ${formatEther(payout as bigint)} STT. Added to your balance.`);
+          onGameWin();
+        }
+      });
+    },
   });
 
   // --- State for UI Animation ---
