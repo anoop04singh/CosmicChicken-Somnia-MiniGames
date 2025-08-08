@@ -21,7 +21,7 @@ const MultiplayerMode = () => {
     address: contractAddress,
     abi: contractAbi,
     functionName: 'isPlayerInCurrentRound',
-    args: [address],
+    args: [address as `0x${string}`],
     enabled: !!address,
   });
 
@@ -75,7 +75,7 @@ const MultiplayerMode = () => {
       <div className="rules-panel">
         <h3 className="panel-title">Multiplayer Royale Rules</h3>
         <div className="rules-list">
-          <p className="rule-item">Pay 0.01 SOM to join the round.</p>
+          <p className="rule-item">Pay 0.01 STT to join the round.</p>
           <p className="rule-item">Each new player resets the timer.</p>
           <p className="rule-item">Eject anytime to leave, but forfeit your fee.</p>
           <p className="rule-item">The last player to join before the timer runs out wins the entire prize pool!</p>
@@ -94,14 +94,14 @@ const MultiplayerMode = () => {
       <div className="game-status">
         <div className="status-display">
           <div className="round-info">
-            {isLoadingRound ? <Loader2 className="h-4 w-4 animate-spin" /> : `Prize Pool: ${prizePool} SOM | Players: ${playerCount}`}
+            {isLoadingRound ? <Loader2 className="h-4 w-4 animate-spin" /> : `Prize Pool: ${prizePool} STT | Players: ${playerCount}`}
           </div>
         </div>
         <div className="action-buttons">
           {!isPlayerInRound ? (
             <Button onClick={handleJoin} disabled={isPending || isConfirming} className="retro-btn-success action-btn pulse">
               {isPending || isConfirming ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Join Round (0.01 SOM)
+              Join Round (0.01 STT)
             </Button>
           ) : (
             <Button onClick={handleEject} disabled={isPending || isConfirming} className="retro-btn-danger action-btn eject-btn">

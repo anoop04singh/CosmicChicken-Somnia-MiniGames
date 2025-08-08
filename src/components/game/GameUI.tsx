@@ -38,7 +38,7 @@ const GameUI = () => {
       ]
     : ['--', '--', '--'];
 
-  const isOwner = address && ownerAddress && address.toLowerCase() === (ownerAddress as string).toLowerCase();
+  const isOwner = !!(address && ownerAddress && address.toLowerCase() === (ownerAddress as string).toLowerCase());
 
   return (
     <div className="game-container">
@@ -72,7 +72,7 @@ const GameUI = () => {
           </div>
           <div className="stat-panel">
             <Wallet className="stat-icon" />
-            <div className="stat-value">{isLoadingStats ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : `${totalWon} SOM`}</div>
+            <div className="stat-value">{isLoadingStats ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : `${totalWon} STT`}</div>
             <div className="stat-label">Total Won</div>
           </div>
         </div>

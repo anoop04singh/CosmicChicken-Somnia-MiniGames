@@ -27,7 +27,7 @@ const BotMode = () => {
     address: contractAddress,
     abi: contractAbi,
     functionName: 'getBotGameInfo',
-    args: [address],
+    args: [address as `0x${string}`],
     enabled: !!address,
     watch: true,
   });
@@ -124,7 +124,7 @@ const BotMode = () => {
       <div className="rules-panel casino-rules">
         <h3 className="panel-title">Speed Round Rules</h3>
         <div className="rules-list">
-          <p className="rule-item">Pay 0.01 SOM to start a 30-second round against the bot.</p>
+          <p className="rule-item">Pay 0.01 STT to start a 30-second round against the bot.</p>
           <p className="rule-item">A prize multiplier increases rapidly.</p>
           <p className="rule-item">The bot will eject at a random time. Cash out before it does to win!</p>
           <p className="rule-item">If the bot ejects first or time runs out, you lose.</p>
@@ -140,7 +140,7 @@ const BotMode = () => {
           <div className="bot-stat">
             <div className="bot-stat-label">Potential Payout</div>
             <div className="bot-stat-value payout">
-              {potentialPayout ? formatEther(potentialPayout as bigint) : '0.00'} SOM
+              {potentialPayout ? formatEther(potentialPayout as bigint) : '0.00'} STT
             </div>
           </div>
           <div className="bot-stat">
@@ -155,7 +155,7 @@ const BotMode = () => {
           {!isActive && !isFinished && (
             <Button onClick={handleStart} disabled={isPending} className="retro-btn-warning action-btn pulse">
               {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Start Bot Game (0.01 SOM)
+              Start Bot Game (0.01 STT)
             </Button>
           )}
           {isActive && (
