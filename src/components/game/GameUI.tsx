@@ -30,14 +30,6 @@ const GameUI = () => {
     watch: true,
   });
 
-  const [playersOnline, activeRounds, totalWon] = (globalStats && Array.isArray(globalStats) && globalStats.length >= 3)
-    ? [
-        Number(globalStats[0]),
-        Number(globalStats[1]),
-        formatEther(globalStats[2] as bigint)
-      ]
-    : ['--', '--', '--'];
-
   const isOwner = !!(address && ownerAddress && address.toLowerCase() === (ownerAddress as string).toLowerCase());
 
   return (
@@ -62,17 +54,17 @@ const GameUI = () => {
         <div className="stats-grid">
           <div className="stat-panel">
             <Users className="stat-icon" />
-            <div className="stat-value">{isLoadingStats ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : playersOnline}</div>
+            <div className="stat-value">{isLoadingStats ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : (globalStats ? Number(globalStats[0]) : '--')}</div>
             <div className="stat-label">Players Online</div>
           </div>
           <div className="stat-panel">
             <Rocket className="stat-icon" />
-            <div className="stat-value">{isLoadingStats ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : activeRounds}</div>
+            <div className="stat-value">{isLoadingStats ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : (globalStats ? Number(globalStats[1]) : '--')}</div>
             <div className="stat-label">Active Rounds</div>
           </div>
           <div className="stat-panel">
             <Wallet className="stat-icon" />
-            <div className="stat-value">{isLoadingStats ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : `${totalWon} STT`}</div>
+            <div className="stat-value">{isLoadingStats ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : (globalStats ? `${formatEther(globalStats[2] as bigint)} STT` : '-- STT')}</div>
             <div className="stat-label">Total Won</div>
           </div>
         </div>

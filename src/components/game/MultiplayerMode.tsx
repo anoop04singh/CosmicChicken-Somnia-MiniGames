@@ -50,9 +50,6 @@ const MultiplayerMode = () => {
     }
   }, [isConfirmed, refetch, refetchPlayerStatus, reset]);
 
-  const prizePool = (roundInfo && Array.isArray(roundInfo) && roundInfo.length >= 1) ? formatEther(roundInfo[0] as bigint) : '0';
-  const playerCount = (roundInfo && Array.isArray(roundInfo) && roundInfo.length >= 4) ? Number(roundInfo[3]) : 0;
-
   const handleJoin = () => {
     writeContract({
       address: contractAddress,
@@ -94,7 +91,9 @@ const MultiplayerMode = () => {
       <div className="game-status">
         <div className="status-display">
           <div className="round-info">
-            {isLoadingRound ? <Loader2 className="h-4 w-4 animate-spin" /> : `Prize Pool: ${prizePool} STT | Players: ${playerCount}`}
+            {isLoadingRound ? <Loader2 className="h-4 w-4 animate-spin" /> : (
+              roundInfo ? `Prize Pool: ${formatEther(roundInfo[0] as bigint)} STT | Players: ${Number(roundInfo[3])}` : 'Loading...'
+            )}
           </div>
         </div>
         <div className="action-buttons">

@@ -86,7 +86,7 @@ const OwnerPanel = () => {
         <div className="flex-1 flex flex-col">
           <Input 
             type="text" 
-            placeholder="New Bet Amount (SOM)" 
+            placeholder="New Bet Amount (STT)" 
             value={betAmount}
             onChange={(e) => setBetAmount(e.target.value)}
             className="retro-input"
