@@ -36,7 +36,7 @@ const OwnerPanel = () => {
     writeContract({
       address: contractAddress,
       abi: contractAbi,
-      functionName: 'withdraw',
+      functionName: 'withdrawContractBalance',
     });
   };
 
@@ -48,7 +48,7 @@ const OwnerPanel = () => {
     writeContract({
       address: contractAddress,
       abi: contractAbi,
-      functionName: 'setBetAmount',
+      functionName: 'updateEntryFee',
       args: [parseEther(betAmount)],
     });
   };
@@ -61,7 +61,7 @@ const OwnerPanel = () => {
     writeContract({
       address: contractAddress,
       abi: contractAbi,
-      functionName: 'setRoundDuration',
+      functionName: 'updateRoundDuration',
       args: [BigInt(roundDuration)],
     });
   };

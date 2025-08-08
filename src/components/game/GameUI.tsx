@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useAccount, useDisconnect, useBalance, useReadContract, usePublicClient } from 'wagmi';
+import { useState, useEffect } from 'react';
+import { useAccount, useDisconnect, useBalance, useReadContract } from 'wagmi';
 import { Button } from '@/components/ui/button';
 import RetroWindow from './RetroWindow';
 import MultiplayerMode from './MultiplayerMode';
@@ -16,7 +16,6 @@ const GameUI = () => {
   const { address } = useAccount();
   const { disconnect } = useDisconnect();
   const { data: balance } = useBalance({ address });
-  const publicClient = usePublicClient();
 
   const { data: ownerAddress } = useReadContract({
     address: contractAddress,
@@ -24,33 +23,30 @@ const GameUI = () => {
     functionName: 'owner',
   });
 
-  const [globalStats, setGlobalStats] = useState<readonly [bigint, bigint, bigint] | null>(null);
-  const [isLoadingStats, setIsLoadingStats] = useState(true);
+  const { data: roundInfo, isLoading: isLoadingRoundInfo, refetch: refetchRoundInfo } = useReadContract({
+    address: contractAddress,
+    abi: contractAbi,
+    functionName: 'getCurrentRoundInfo',
+  });
 
-  const fetchGlobalStats = useCallback(async () => {
-    if (!publicClient) return;
-    try {
-      const data = await publicClient.readContract({
-        address: contractAddress,
-        abi: contractAbi,
-        functionName: 'getGlobalStats',
-      });
-      setGlobalStats(data);
-    } catch (e) {
-      console.error("Failed to fetch global stats:", e);
-      setGlobalStats(null);
-    } finally {
-      setIsLoadingStats(false);
-    }
-  }, [publicClient]);
+  const { data: currentRoundId, isLoading: isLoadingCurrentRoundId, refetch: refetchCurrentRoundId } = useReadContract({
+    address: contractAddress,
+    abi: contractAbi,
+    functionName: 'currentRoundId',
+  });
 
   useEffect(() => {
-    fetchGlobalStats();
-    const interval = setInterval(fetchGlobalStats, 5000);
+    const interval = setInterval(() => {
+      refetchRoundInfo();
+      refetchCurrentRoundId();
+    }, 5000);
     return () => clearInterval(interval);
-  }, [fetchGlobalStats]);
+  }, [refetchRoundInfo, refetchCurrentRoundId]);
 
   const isOwner = !!(address && ownerAddress && address.toLowerCase() === (ownerAddress as string).toLowerCase());
+
+  const prizePool = roundInfo && roundInfo[3] ? formatEther(roundInfo[3]) : '0';
+  const activePlayers = roundInfo && roundInfo[4] ? Number(roundInfo[4]) : 0;
 
   return (
     <div className="game-container">
@@ -74,18 +70,18 @@ const GameUI = () => {
         <div className="stats-grid">
           <div className="stat-panel">
             <Users className="stat-icon" />
-            <div className="stat-value">{isLoadingStats ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : (globalStats ? Number(globalStats[0]) : '--')}</div>
-            <div className="stat-label">Players Online</div>
+            <div className="stat-value">{isLoadingRoundInfo ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : activePlayers}</div>
+            <div className="stat-label">Active Players</div>
           </div>
           <div className="stat-panel">
             <Rocket className="stat-icon" />
-            <div className="stat-value">{isLoadingStats ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : (globalStats ? Number(globalStats[1]) : '--')}</div>
-            <div className="stat-label">Active Rounds</div>
+            <div className="stat-value">{isLoadingCurrentRoundId ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : Number(currentRoundId || 0)}</div>
+            <div className="stat-label">Current Round</div>
           </div>
           <div className="stat-panel">
             <Wallet className="stat-icon" />
-            <div className="stat-value">{isLoadingStats ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : (globalStats ? `${formatEther(globalStats[2] as bigint)} STT` : '-- STT')}</div>
-            <div className="stat-label">Total Won</div>
+            <div className="stat-value">{isLoadingRoundInfo ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : `${prizePool} STT`}</div>
+            <div className="stat-label">Prize Pool</div>
           </div>
         </div>
 

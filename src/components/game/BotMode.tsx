@@ -1,17 +1,13 @@
-import { useAccount, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { contractAddress, contractAbi } from '@/lib/abi';
 import { parseEther, formatEther } from 'viem';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { showError, showSuccess } from '@/utils/toast';
-
-const BOT_ROUND_DURATION = 30; // seconds
 
 const BotMode = () => {
   const { address } = useAccount();
-  const publicClient = usePublicClient();
-  const gameLoopRef = useRef<NodeJS.Timeout | null>(null);
 
   const { data: hash, writeContract, isPending: isWritePending, reset: resetWriteContract } = useWriteContract({
     onSuccess: (hash) => { showSuccess(`Transaction sent: ${hash.slice(0,10)}...`); },
@@ -20,47 +16,63 @@ const BotMode = () => {
 
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
 
-  const [botGameInfo, setBotGameInfo] = useState<readonly [bigint, bigint, boolean, boolean] | null>(null);
-  const [potentialPayout, setPotentialPayout] = useState<bigint | null>(null);
+  const { data: activeGameId, refetch: refetchActiveGameId } = useReadContract({
+    address: contractAddress,
+    abi: contractAbi,
+    functionName: 'getPlayerActiveBotGame',
+    args: [address as `0x${string}`],
+    enabled: !!address,
+  });
 
-  const [gameId, startTime, isActive, isFinished] = botGameInfo || [0n, 0n, false, false];
+  const { data: botGameInfo, refetch: refetchBotGameInfo } = useReadContract({
+    address: contractAddress,
+    abi: contractAbi,
+    functionName: 'getBotGameInfo',
+    args: [activeGameId as bigint],
+    enabled: !!activeGameId && Number(activeGameId) > 0,
+  });
 
-  const fetchBotGameData = useCallback(async () => {
-    if (!publicClient || !address) return;
-    try {
-      const info = await publicClient.readContract({
-        address: contractAddress,
-        abi: contractAbi,
-        functionName: 'getBotGameInfo',
-        args: [address],
-      });
-      setBotGameInfo(info);
-
-      const [currentId, , currentIsActive] = info;
-      if (currentId > 0 && currentIsActive) {
-        const payout = await publicClient.readContract({
-          address: contractAddress,
-          abi: contractAbi,
-          functionName: 'getPotentialPayout',
-          args: [currentId],
-        });
-        setPotentialPayout(payout);
-      } else {
-        setPotentialPayout(null);
-      }
-    } catch (e) {
-      console.error("Failed to fetch bot game data:", e);
-    }
-  }, [publicClient, address]);
+  const { data: potentialPayout, refetch: refetchPayout } = useReadContract({
+    address: contractAddress,
+    abi: contractAbi,
+    functionName: 'getPotentialPayout',
+    args: [activeGameId as bigint],
+    enabled: !!activeGameId && Number(activeGameId) > 0,
+  });
 
   useEffect(() => {
-    fetchBotGameData();
-    const interval = setInterval(fetchBotGameData, 3000);
+    const interval = setInterval(() => {
+      if (address) {
+        refetchActiveGameId();
+        if (activeGameId && Number(activeGameId) > 0) {
+          refetchBotGameInfo();
+          refetchPayout();
+        }
+      }
+    }, 3000);
     return () => clearInterval(interval);
-  }, [fetchBotGameData]);
+  }, [address, activeGameId, refetchActiveGameId, refetchBotGameInfo, refetchPayout]);
 
-  const [multiplier, setMultiplier] = useState(1);
-  const [timeRemaining, setTimeRemaining] = useState(BOT_ROUND_DURATION);
+  const [isActive, setIsActive] = useState(false);
+  const [isFinished, setIsFinished] = useState(false);
+
+  useEffect(() => {
+    if (botGameInfo) {
+      const gameIsActive = botGameInfo[5];
+      const gameTimedOut = botGameInfo[8];
+      const botEjected = botGameInfo[7];
+      
+      setIsActive(gameIsActive);
+      if (!gameIsActive && Number(activeGameId) > 0) {
+        setIsFinished(true);
+      } else {
+        setIsFinished(false);
+      }
+    } else if (Number(activeGameId) === 0) {
+      setIsActive(false);
+      setIsFinished(false);
+    }
+  }, [botGameInfo, activeGameId]);
 
   const handleReset = () => {
     if (!address) return;
@@ -73,39 +85,12 @@ const BotMode = () => {
   };
 
   useEffect(() => {
-    if (isFinished && address) {
-      handleReset();
-    }
-  }, [isFinished, address]);
-
-  useEffect(() => {
     if (isConfirmed) {
       showSuccess("Transaction confirmed!");
-      fetchBotGameData();
+      refetchActiveGameId();
       resetWriteContract();
     }
-  }, [isConfirmed, fetchBotGameData, resetWriteContract]);
-
-  useEffect(() => {
-    if (isActive) {
-      if (gameLoopRef.current) clearInterval(gameLoopRef.current);
-      gameLoopRef.current = setInterval(() => {
-        const elapsed = (Date.now() / 1000) - Number(startTime);
-        setMultiplier(1 + (elapsed / 5));
-        setTimeRemaining(Math.max(0, BOT_ROUND_DURATION - elapsed));
-        if (timeRemaining <= 0) {
-          if (gameLoopRef.current) clearInterval(gameLoopRef.current);
-        }
-      }, 1000);
-    } else {
-      if (gameLoopRef.current) clearInterval(gameLoopRef.current);
-      setMultiplier(1);
-      setTimeRemaining(BOT_ROUND_DURATION);
-    }
-    return () => {
-      if (gameLoopRef.current) clearInterval(gameLoopRef.current);
-    };
-  }, [isActive, startTime, timeRemaining]);
+  }, [isConfirmed, refetchActiveGameId, resetWriteContract]);
 
   const handleStart = () => {
     writeContract({
@@ -125,6 +110,8 @@ const BotMode = () => {
   };
 
   const isPending = isWritePending || isConfirming;
+  const multiplier = botGameInfo && botGameInfo[3] ? Number(formatEther(botGameInfo[3])).toFixed(2) : '1.00';
+  const timeRemaining = botGameInfo && botGameInfo[6] ? Number(botGameInfo[6]) : 0;
 
   return (
     <>
@@ -140,19 +127,19 @@ const BotMode = () => {
 
       <div className="bot-game-display">
         <div className="multiplier-display">
-          <div className="multiplier-value">{isActive ? multiplier.toFixed(2) : '1.00'}x</div>
+          <div className="multiplier-value">{multiplier}x</div>
           <div className="multiplier-label">Current Multiplier</div>
         </div>
         <div className="bot-stats">
           <div className="bot-stat">
             <div className="bot-stat-label">Potential Payout</div>
             <div className="bot-stat-value payout">
-              {potentialPayout ? formatEther(potentialPayout) : '0.00'} STT
+              {potentialPayout ? formatEther(potentialPayout as bigint) : '0.00'} STT
             </div>
           </div>
           <div className="bot-stat">
             <div className="bot-stat-label">Time Remaining</div>
-            <div className="bot-stat-value time">{isActive ? `${Math.floor(timeRemaining)}s` : '--s'}</div>
+            <div className="bot-stat-value time">{isActive ? `${timeRemaining}s` : '--s'}</div>
           </div>
         </div>
       </div>

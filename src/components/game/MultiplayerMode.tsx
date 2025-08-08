@@ -1,57 +1,44 @@
-import { useAccount, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { contractAddress, contractAbi } from '@/lib/abi';
 import { parseEther, formatEther } from 'viem';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 
 const MultiplayerMode = () => {
   const { address } = useAccount();
-  const publicClient = usePublicClient();
   const { data: hash, writeContract, isPending, reset } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
 
-  const [roundInfo, setRoundInfo] = useState<readonly [bigint, bigint, `0x${string}`, bigint, boolean] | null>(null);
-  const [isPlayerInRound, setIsPlayerInRound] = useState<boolean>(false);
-  const [isLoadingRound, setIsLoadingRound] = useState(true);
+  const { data: roundInfo, refetch, isLoading: isLoadingRound } = useReadContract({
+    address: contractAddress,
+    abi: contractAbi,
+    functionName: 'getCurrentRoundInfo',
+  });
+
+  const { data: isPlayerInRound, refetch: refetchPlayerStatus } = useReadContract({
+    address: contractAddress,
+    abi: contractAbi,
+    functionName: 'isPlayerInCurrentRound',
+    args: [address as `0x${string}`],
+    enabled: !!address,
+  });
+
   const [timeLeft, setTimeLeft] = useState(0);
 
-  const fetchRoundData = useCallback(async () => {
-    if (!publicClient) return;
-    setIsLoadingRound(true);
-    try {
-      const info = await publicClient.readContract({
-        address: contractAddress,
-        abi: contractAbi,
-        functionName: 'getCurrentRoundInfo',
-      });
-      setRoundInfo(info);
-
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refetch();
       if (address) {
-        const isInRound = await publicClient.readContract({
-          address: contractAddress,
-          abi: contractAbi,
-          functionName: 'isPlayerInCurrentRound',
-          args: [address],
-        });
-        setIsPlayerInRound(isInRound);
+        refetchPlayerStatus();
       }
-    } catch (e) {
-      console.error("Failed to fetch round data:", e);
-    } finally {
-      setIsLoadingRound(false);
-    }
-  }, [publicClient, address]);
-
-  useEffect(() => {
-    fetchRoundData();
-    const interval = setInterval(fetchRoundData, 5000);
+    }, 5000);
     return () => clearInterval(interval);
-  }, [fetchRoundData]);
+  }, [refetch, refetchPlayerStatus, address]);
 
   useEffect(() => {
-    if (roundInfo) {
-      const endTime = Number(roundInfo[1]);
+    if (roundInfo && Array.isArray(roundInfo) && roundInfo.length > 2) {
+      const endTime = Number(roundInfo[2]);
       const now = Math.floor(Date.now() / 1000);
       setTimeLeft(Math.max(0, endTime - now));
     }
@@ -66,10 +53,11 @@ const MultiplayerMode = () => {
 
   useEffect(() => {
     if (isConfirmed) {
-      fetchRoundData();
+      refetch();
+      refetchPlayerStatus();
       reset();
     }
-  }, [isConfirmed, fetchRoundData, reset]);
+  }, [isConfirmed, refetch, refetchPlayerStatus, reset]);
 
   const handleJoin = () => {
     writeContract({
@@ -87,6 +75,9 @@ const MultiplayerMode = () => {
       functionName: 'ejectFromRound',
     });
   };
+
+  const prizePool = roundInfo && roundInfo[3] ? formatEther(roundInfo[3]) : '0';
+  const activePlayers = roundInfo && roundInfo[4] ? Number(roundInfo[4]) : 0;
 
   return (
     <>
@@ -112,9 +103,7 @@ const MultiplayerMode = () => {
       <div className="game-status">
         <div className="status-display">
           <div className="round-info">
-            {isLoadingRound ? <Loader2 className="h-4 w-4 animate-spin" /> : (
-              roundInfo ? `Prize Pool: ${formatEther(roundInfo[0] as bigint)} STT | Players: ${Number(roundInfo[3])}` : 'Loading...'
-            )}
+            {isLoadingRound ? <Loader2 className="h-4 w-4 animate-spin" /> : `Prize Pool: ${prizePool} STT | Players: ${activePlayers}`}
           </div>
         </div>
         <div className="action-buttons">
