@@ -1,5 +1,6 @@
-@import 'tailwindcss';
-@import 'tw-animate-css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 @custom-variant dark (&:is(.dark *));
 
@@ -123,10 +124,6 @@
     line-height: 1.4;
   }
 }
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
 
 /* Enhanced Typography */
 .retro-text {
