@@ -29,9 +29,12 @@ const BotMode = () => {
     functionName: 'getBotGameInfo',
     args: [address!],
     enabled: !!address,
+    watch: true,
   });
 
-  const [gameId, startTime, isActive, isFinished] = botGameInfo ? (botGameInfo as [bigint, bigint, boolean, boolean]) : [0n, 0n, false, false];
+  const [gameId, startTime, isActive, isFinished] = (botGameInfo && Array.isArray(botGameInfo))
+    ? botGameInfo as [bigint, bigint, boolean, boolean]
+    : [0n, 0n, false, false];
 
   const { data: potentialPayout, refetch: refetchPayout } = useReadContract({
     address: contractAddress,
@@ -80,10 +83,9 @@ const BotMode = () => {
         const newTimeRemaining = Math.max(0, BOT_ROUND_DURATION - elapsed);
         setTimeRemaining(newTimeRemaining);
 
-        refetchBotGame();
-
-        if (newTimeRemaining <= 0) {
+        if (newTimeRemaining <= 0 || isFinished) {
           if (gameLoopRef.current) clearInterval(gameLoopRef.current);
+          refetchBotGame();
         }
       }, 1000);
     } else {
@@ -95,7 +97,7 @@ const BotMode = () => {
     return () => {
       if (gameLoopRef.current) clearInterval(gameLoopRef.current);
     };
-  }, [isActive, startTime, refetchBotGame]);
+  }, [isActive, startTime, refetchBotGame, isFinished]);
 
   const handleStart = () => {
     writeContract({

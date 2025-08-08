@@ -10,10 +10,11 @@ const MultiplayerMode = () => {
   const { data: hash, writeContract, isPending, reset } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
 
-  const { data: roundInfo, refetch } = useReadContract({
+  const { data: roundInfo, refetch, isLoading: isLoadingRound } = useReadContract({
     address: contractAddress,
     abi: contractAbi,
     functionName: 'getCurrentRoundInfo',
+    watch: true,
   });
 
   const { data: isPlayerInRound, refetch: refetchPlayerStatus } = useReadContract({
@@ -27,8 +28,8 @@ const MultiplayerMode = () => {
   const [timeLeft, setTimeLeft] = useState(0);
 
   useEffect(() => {
-    if (roundInfo) {
-      const endTime = Number((roundInfo as any)[1]);
+    if (roundInfo && Array.isArray(roundInfo)) {
+      const endTime = Number(roundInfo[1]);
       const now = Math.floor(Date.now() / 1000);
       setTimeLeft(Math.max(0, endTime - now));
     }
@@ -49,25 +50,8 @@ const MultiplayerMode = () => {
     }
   }, [isConfirmed, refetch, refetchPlayerStatus, reset]);
 
-  const handleJoin = () => {
-    writeContract({
-      address: contractAddress,
-      abi: contractAbi,
-      functionName: 'joinRound',
-      value: parseEther('0.01'),
-    });
-  };
-
-  const handleEject = () => {
-    writeContract({
-      address: contractAddress,
-      abi: contractAbi,
-      functionName: 'ejectFromRound',
-    });
-  };
-
-  const prizePool = roundInfo ? formatEther((roundInfo as any)[0] as bigint) : '0';
-  const playerCount = roundInfo ? Number((roundInfo as any)[3]) : 0;
+  const prizePool = (roundInfo && Array.isArray(roundInfo)) ? formatEther(roundInfo[0] as bigint) : '0';
+  const playerCount = (roundInfo && Array.isArray(roundInfo)) ? Number(roundInfo[3]) : 0;
 
   return (
     <>
@@ -83,7 +67,7 @@ const MultiplayerMode = () => {
 
       <div className="intense-timer">
         <div className="timer-display">
-          <div className="timer-value">{timeLeft}s</div>
+          <div className="timer-value">{isLoadingRound ? <Loader2 className="h-6 w-6 animate-spin mx-auto" /> : `${timeLeft}s`}</div>
           <div className="timer-bar">
             <div className="timer-fill" style={{ width: `${(timeLeft / 60) * 100}%` }}></div>
           </div>
@@ -93,7 +77,7 @@ const MultiplayerMode = () => {
       <div className="game-status">
         <div className="status-display">
           <div className="round-info">
-            Prize Pool: {prizePool} SOM | Players: {playerCount}
+            {isLoadingRound ? <Loader2 className="h-4 w-4 animate-spin" /> : `Prize Pool: ${prizePool} SOM | Players: ${playerCount}`}
           </div>
         </div>
         <div className="action-buttons">

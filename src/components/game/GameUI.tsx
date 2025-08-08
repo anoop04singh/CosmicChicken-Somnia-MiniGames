@@ -5,7 +5,7 @@ import RetroWindow from './RetroWindow';
 import MultiplayerMode from './MultiplayerMode';
 import BotMode from './BotMode';
 import OwnerPanel from './OwnerPanel';
-import { Rocket, Users, Bot, Wallet } from 'lucide-react';
+import { Rocket, Users, Bot, Wallet, Loader2 } from 'lucide-react';
 import { formatEther } from 'viem';
 import { contractAddress, contractAbi } from '@/lib/abi';
 
@@ -23,16 +23,22 @@ const GameUI = () => {
     functionName: 'owner',
   });
 
-  const { data: globalStats } = useReadContract({
+  const { data: globalStats, isLoading: isLoadingStats } = useReadContract({
     address: contractAddress,
     abi: contractAbi,
     functionName: 'getGlobalStats',
     watch: true,
   });
 
-  const playersOnline = globalStats ? Number((globalStats as any)[0]) : '--';
-  const activeRounds = globalStats ? Number((globalStats as any)[1]) : '--';
-  const totalWon = globalStats ? formatEther((globalStats as any)[2] as bigint) : '--';
+  const [playersOnline, activeRounds, totalWon] = (globalStats && Array.isArray(globalStats))
+    ? [
+        Number(globalStats[0]),
+        Number(globalStats[1]),
+        formatEther(globalStats[2] as bigint)
+      ]
+    : ['--', '--', '--'];
+
+  const isOwner = address && ownerAddress && address.toLowerCase() === (ownerAddress as string).toLowerCase();
 
   return (
     <div className="game-container">
@@ -56,17 +62,17 @@ const GameUI = () => {
         <div className="stats-grid">
           <div className="stat-panel">
             <Users className="stat-icon" />
-            <div className="stat-value">{playersOnline}</div>
+            <div className="stat-value">{isLoadingStats ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : playersOnline}</div>
             <div className="stat-label">Players Online</div>
           </div>
           <div className="stat-panel">
             <Rocket className="stat-icon" />
-            <div className="stat-value">{activeRounds}</div>
+            <div className="stat-value">{isLoadingStats ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : activeRounds}</div>
             <div className="stat-label">Active Rounds</div>
           </div>
           <div className="stat-panel">
             <Wallet className="stat-icon" />
-            <div className="stat-value">{totalWon} SOM</div>
+            <div className="stat-value">{isLoadingStats ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : `${totalWon} SOM`}</div>
             <div className="stat-label">Total Won</div>
           </div>
         </div>
@@ -94,7 +100,7 @@ const GameUI = () => {
           {mode === 'multiplayer' ? <MultiplayerMode /> : <BotMode />}
         </div>
         
-        {address && ownerAddress && address === ownerAddress && (
+        {isOwner && (
           <OwnerPanel />
         )}
       </RetroWindow>
