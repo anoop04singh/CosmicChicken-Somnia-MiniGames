@@ -14,7 +14,6 @@ const MultiplayerMode = () => {
     address: contractAddress,
     abi: contractAbi,
     functionName: 'getCurrentRoundInfo',
-    watch: true,
   });
 
   const { data: isPlayerInRound, refetch: refetchPlayerStatus } = useReadContract({
@@ -26,6 +25,14 @@ const MultiplayerMode = () => {
   });
 
   const [timeLeft, setTimeLeft] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refetch();
+      refetchPlayerStatus();
+    }, 5000); // Poll every 5 seconds
+    return () => clearInterval(interval);
+  }, [refetch, refetchPlayerStatus]);
 
   useEffect(() => {
     if (roundInfo && Array.isArray(roundInfo) && roundInfo.length >= 2) {

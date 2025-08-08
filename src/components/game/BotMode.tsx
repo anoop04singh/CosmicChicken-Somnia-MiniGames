@@ -29,8 +29,16 @@ const BotMode = () => {
     functionName: 'getBotGameInfo',
     args: [address as `0x${string}`],
     enabled: !!address,
-    watch: true,
   });
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (address) {
+        refetchBotGame();
+      }
+    }, 3000); // Poll every 3 seconds
+    return () => clearInterval(interval);
+  }, [address, refetchBotGame]);
 
   const [gameId, startTime, isActive, isFinished] = (botGameInfo && Array.isArray(botGameInfo))
     ? botGameInfo as [bigint, bigint, boolean, boolean]
@@ -84,9 +92,8 @@ const BotMode = () => {
         const newTimeRemaining = Math.max(0, BOT_ROUND_DURATION - elapsed);
         setTimeRemaining(newTimeRemaining);
 
-        if (newTimeRemaining <= 0 || isFinished) {
+        if (newTimeRemaining <= 0) {
           if (gameLoopRef.current) clearInterval(gameLoopRef.current);
-          refetchBotGame();
         }
       }, 1000);
     } else {
@@ -98,7 +105,7 @@ const BotMode = () => {
     return () => {
       if (gameLoopRef.current) clearInterval(gameLoopRef.current);
     };
-  }, [isActive, startTime, refetchBotGame, isFinished]);
+  }, [isActive, startTime]);
 
   const handleStart = () => {
     writeContract({

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAccount, useDisconnect, useBalance, useReadContract } from 'wagmi';
 import { Button } from '@/components/ui/button';
 import RetroWindow from './RetroWindow';
@@ -23,12 +23,18 @@ const GameUI = () => {
     functionName: 'owner',
   });
 
-  const { data: globalStats, isLoading: isLoadingStats } = useReadContract({
+  const { data: globalStats, isLoading: isLoadingStats, refetch } = useReadContract({
     address: contractAddress,
     abi: contractAbi,
     functionName: 'getGlobalStats',
-    watch: true,
   });
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refetch();
+    }, 5000); // Poll every 5 seconds
+    return () => clearInterval(interval);
+  }, [refetch]);
 
   const isOwner = !!(address && ownerAddress && address.toLowerCase() === (ownerAddress as string).toLowerCase());
 
