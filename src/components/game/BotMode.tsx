@@ -3,11 +3,24 @@ import { contractAddress, contractAbi } from '@/lib/abi';
 import { parseEther, formatEther } from 'viem';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { showError, showSuccess } from '@/utils/toast';
+
+const BOT_ROUND_DURATION = 30; // seconds
 
 const BotMode = () => {
   const { address } = useAccount();
-  const { data: hash, writeContract, isPending, reset } = useWriteContract();
+  const gameLoopRef = useRef<NodeJS.Timeout | null>(null);
+
+  const { data: hash, writeContract, isPending: isWritePending, reset: resetWriteContract } = useWriteContract({
+    onSuccess: (hash) => {
+      showSuccess(`Transaction sent: ${hash.slice(0,10)}...`);
+    },
+    onError: (error) => {
+      showError(error.shortMessage || error.message);
+    }
+  });
+
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
 
   const { data: botGameInfo, refetch: refetchBotGame } = useReadContract({
@@ -18,10 +31,9 @@ const BotMode = () => {
     enabled: !!address,
   });
 
-  const gameId = botGameInfo ? (botGameInfo as any)[0] : 0;
-  const isActive = botGameInfo ? (botGameInfo as any)[2] : false;
+  const [gameId, startTime, isActive, isFinished] = botGameInfo ? (botGameInfo as [bigint, bigint, boolean, boolean]) : [0n, 0n, false, false];
 
-  const { data: potentialPayout } = useReadContract({
+  const { data: potentialPayout, refetch: refetchPayout } = useReadContract({
     address: contractAddress,
     abi: contractAbi,
     functionName: 'getPotentialPayout',
@@ -30,26 +42,60 @@ const BotMode = () => {
   });
 
   const [multiplier, setMultiplier] = useState(1);
+  const [timeRemaining, setTimeRemaining] = useState(BOT_ROUND_DURATION);
+
+  const handleReset = () => {
+    writeContract({
+      address: contractAddress,
+      abi: contractAbi,
+      functionName: 'resetBotGame',
+      args: [address!]
+    });
+  };
+
+  useEffect(() => {
+    if (isFinished) {
+      handleReset();
+    }
+  }, [isFinished]);
 
   useEffect(() => {
     if (isConfirmed) {
+      showSuccess("Transaction confirmed!");
       refetchBotGame();
-      reset();
+      refetchPayout();
+      resetWriteContract();
     }
-  }, [isConfirmed, refetchBotGame, reset]);
+  }, [isConfirmed, refetchBotGame, refetchPayout, resetWriteContract]);
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
     if (isActive) {
-      const startTime = Number((botGameInfo as any)[1]);
-      interval = setInterval(() => {
-        const elapsed = (Date.now() / 1000) - startTime;
+      if (gameLoopRef.current) clearInterval(gameLoopRef.current);
+
+      gameLoopRef.current = setInterval(() => {
+        const elapsed = (Date.now() / 1000) - Number(startTime);
         const newMultiplier = 1 + (elapsed / 5);
         setMultiplier(newMultiplier);
-      }, 100);
+
+        const newTimeRemaining = Math.max(0, BOT_ROUND_DURATION - elapsed);
+        setTimeRemaining(newTimeRemaining);
+
+        refetchBotGame();
+
+        if (newTimeRemaining <= 0) {
+          if (gameLoopRef.current) clearInterval(gameLoopRef.current);
+        }
+      }, 1000);
+    } else {
+      if (gameLoopRef.current) clearInterval(gameLoopRef.current);
+      setMultiplier(1);
+      setTimeRemaining(BOT_ROUND_DURATION);
     }
-    return () => clearInterval(interval);
-  }, [isActive, botGameInfo]);
+
+    return () => {
+      if (gameLoopRef.current) clearInterval(gameLoopRef.current);
+    };
+  }, [isActive, startTime, refetchBotGame]);
 
   const handleStart = () => {
     writeContract({
@@ -68,16 +114,7 @@ const BotMode = () => {
     });
   };
 
-  const handleReset = () => {
-    writeContract({
-      address: contractAddress,
-      abi: contractAbi,
-      functionName: 'resetBotGame',
-      args: [address!]
-    });
-  }
-
-  const isFinished = botGameInfo ? (botGameInfo as any)[3] : false;
+  const isPending = isWritePending || isConfirming;
 
   return (
     <>
@@ -93,7 +130,7 @@ const BotMode = () => {
 
       <div className="bot-game-display">
         <div className="multiplier-display">
-          <div className="multiplier-value">{multiplier.toFixed(2)}x</div>
+          <div className="multiplier-value">{isActive ? multiplier.toFixed(2) : '1.00'}x</div>
           <div className="multiplier-label">Current Multiplier</div>
         </div>
         <div className="bot-stats">
@@ -105,7 +142,7 @@ const BotMode = () => {
           </div>
           <div className="bot-stat">
             <div className="bot-stat-label">Time Remaining</div>
-            <div className="bot-stat-value time">--s</div>
+            <div className="bot-stat-value time">{isActive ? `${Math.floor(timeRemaining)}s` : '--s'}</div>
           </div>
         </div>
       </div>
@@ -113,20 +150,20 @@ const BotMode = () => {
       <div className="game-status">
         <div className="action-buttons">
           {!isActive && !isFinished && (
-            <Button onClick={handleStart} disabled={isPending || isConfirming} className="retro-btn-warning action-btn pulse">
-              {isPending || isConfirming ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            <Button onClick={handleStart} disabled={isPending} className="retro-btn-warning action-btn pulse">
+              {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Start Bot Game (0.01 SOM)
             </Button>
           )}
           {isActive && (
-            <Button onClick={handleEject} disabled={isPending || isConfirming} className="retro-btn-success action-btn cashout-btn">
-              {isPending || isConfirming ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            <Button onClick={handleEject} disabled={isPending} className="retro-btn-success action-btn cashout-btn">
+              {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Cash Out!
             </Button>
           )}
           {isFinished && (
-             <Button onClick={handleReset} disabled={isPending || isConfirming} className="retro-btn-primary action-btn">
-              {isPending || isConfirming ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+             <Button onClick={handleReset} disabled={isPending} className="retro-btn-primary action-btn">
+              {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Play Again
             </Button>
           )}

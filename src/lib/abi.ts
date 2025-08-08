@@ -75,5 +75,44 @@ export const contractAbi = [
     "stateMutability": "nonpayable",
     "inputs": [{ "name": "player", "type": "address" }],
     "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "owner",
+    "stateMutability": "view",
+    "inputs": [],
+    "outputs": [{ "name": "", "type": "address" }]
+  },
+  {
+    "type": "function",
+    "name": "withdraw",
+    "stateMutability": "nonpayable",
+    "inputs": [],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "setBetAmount",
+    "stateMutability": "nonpayable",
+    "inputs": [{ "name": "_newAmount", "type": "uint256" }],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "setRoundDuration",
+    "stateMutability": "nonpayable",
+    "inputs": [{ "name": "_newDuration", "type": "uint256" }],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "getGlobalStats",
+    "stateMutability": "view",
+    "inputs": [],
+    "outputs": [
+      { "name": "playersOnline", "type": "uint256" },
+      { "name": "activeRounds", "type": "uint256" },
+      { "name": "totalWon", "type": "uint256" }
+    ]
   }
 ];

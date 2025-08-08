@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { useAccount, useDisconnect, useBalance } from 'wagmi';
+import { useAccount, useDisconnect, useBalance, useReadContract } from 'wagmi';
 import { Button } from '@/components/ui/button';
 import RetroWindow from './RetroWindow';
 import MultiplayerMode from './MultiplayerMode';
 import BotMode from './BotMode';
+import OwnerPanel from './OwnerPanel';
 import { Rocket, Users, Bot, Wallet } from 'lucide-react';
 import { formatEther } from 'viem';
+import { contractAddress, contractAbi } from '@/lib/abi';
 
 type GameMode = 'multiplayer' | 'bot';
 
@@ -14,6 +16,23 @@ const GameUI = () => {
   const { address } = useAccount();
   const { disconnect } = useDisconnect();
   const { data: balance } = useBalance({ address });
+
+  const { data: ownerAddress } = useReadContract({
+    address: contractAddress,
+    abi: contractAbi,
+    functionName: 'owner',
+  });
+
+  const { data: globalStats } = useReadContract({
+    address: contractAddress,
+    abi: contractAbi,
+    functionName: 'getGlobalStats',
+    watch: true,
+  });
+
+  const playersOnline = globalStats ? Number((globalStats as any)[0]) : '--';
+  const activeRounds = globalStats ? Number((globalStats as any)[1]) : '--';
+  const totalWon = globalStats ? formatEther((globalStats as any)[2] as bigint) : '--';
 
   return (
     <div className="game-container">
@@ -37,17 +56,17 @@ const GameUI = () => {
         <div className="stats-grid">
           <div className="stat-panel">
             <Users className="stat-icon" />
-            <div className="stat-value">--</div>
+            <div className="stat-value">{playersOnline}</div>
             <div className="stat-label">Players Online</div>
           </div>
           <div className="stat-panel">
             <Rocket className="stat-icon" />
-            <div className="stat-value">--</div>
+            <div className="stat-value">{activeRounds}</div>
             <div className="stat-label">Active Rounds</div>
           </div>
           <div className="stat-panel">
             <Wallet className="stat-icon" />
-            <div className="stat-value">-- SOM</div>
+            <div className="stat-value">{totalWon} SOM</div>
             <div className="stat-label">Total Won</div>
           </div>
         </div>
@@ -74,6 +93,10 @@ const GameUI = () => {
         <div className="game-mode-content">
           {mode === 'multiplayer' ? <MultiplayerMode /> : <BotMode />}
         </div>
+        
+        {address && ownerAddress && address === ownerAddress && (
+          <OwnerPanel />
+        )}
       </RetroWindow>
     </div>
   );
