@@ -1,41 +1,56 @@
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useAccount, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
 import { contractAddress, contractAbi } from '@/lib/abi';
 import { parseEther, formatEther } from 'viem';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 
 const MultiplayerMode = () => {
   const { address } = useAccount();
+  const publicClient = usePublicClient();
   const { data: hash, writeContract, isPending, reset } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
 
-  const { data: roundInfo, refetch, isLoading: isLoadingRound } = useReadContract({
-    address: contractAddress,
-    abi: contractAbi,
-    functionName: 'getCurrentRoundInfo',
-  });
-
-  const { data: isPlayerInRound, refetch: refetchPlayerStatus } = useReadContract({
-    address: contractAddress,
-    abi: contractAbi,
-    functionName: 'isPlayerInCurrentRound',
-    args: [address as `0x${string}`],
-    enabled: !!address,
-  });
-
+  const [roundInfo, setRoundInfo] = useState<readonly [bigint, bigint, `0x${string}`, bigint, boolean] | null>(null);
+  const [isPlayerInRound, setIsPlayerInRound] = useState<boolean>(false);
+  const [isLoadingRound, setIsLoadingRound] = useState(true);
   const [timeLeft, setTimeLeft] = useState(0);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      refetch();
-      refetchPlayerStatus();
-    }, 5000); // Poll every 5 seconds
-    return () => clearInterval(interval);
-  }, [refetch, refetchPlayerStatus]);
+  const fetchRoundData = useCallback(async () => {
+    if (!publicClient) return;
+    setIsLoadingRound(true);
+    try {
+      const info = await publicClient.readContract({
+        address: contractAddress,
+        abi: contractAbi,
+        functionName: 'getCurrentRoundInfo',
+      });
+      setRoundInfo(info);
+
+      if (address) {
+        const isInRound = await publicClient.readContract({
+          address: contractAddress,
+          abi: contractAbi,
+          functionName: 'isPlayerInCurrentRound',
+          args: [address],
+        });
+        setIsPlayerInRound(isInRound);
+      }
+    } catch (e) {
+      console.error("Failed to fetch round data:", e);
+    } finally {
+      setIsLoadingRound(false);
+    }
+  }, [publicClient, address]);
 
   useEffect(() => {
-    if (roundInfo && Array.isArray(roundInfo) && roundInfo.length >= 2) {
+    fetchRoundData();
+    const interval = setInterval(fetchRoundData, 5000);
+    return () => clearInterval(interval);
+  }, [fetchRoundData]);
+
+  useEffect(() => {
+    if (roundInfo) {
       const endTime = Number(roundInfo[1]);
       const now = Math.floor(Date.now() / 1000);
       setTimeLeft(Math.max(0, endTime - now));
@@ -51,11 +66,10 @@ const MultiplayerMode = () => {
 
   useEffect(() => {
     if (isConfirmed) {
-      refetch();
-      refetchPlayerStatus();
+      fetchRoundData();
       reset();
     }
-  }, [isConfirmed, refetch, refetchPlayerStatus, reset]);
+  }, [isConfirmed, fetchRoundData, reset]);
 
   const handleJoin = () => {
     writeContract({

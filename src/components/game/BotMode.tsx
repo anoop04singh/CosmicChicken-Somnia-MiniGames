@@ -1,56 +1,63 @@
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useAccount, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
 import { contractAddress, contractAbi } from '@/lib/abi';
 import { parseEther, formatEther } from 'viem';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { showError, showSuccess } from '@/utils/toast';
 
 const BOT_ROUND_DURATION = 30; // seconds
 
 const BotMode = () => {
   const { address } = useAccount();
+  const publicClient = usePublicClient();
   const gameLoopRef = useRef<NodeJS.Timeout | null>(null);
 
   const { data: hash, writeContract, isPending: isWritePending, reset: resetWriteContract } = useWriteContract({
-    onSuccess: (hash) => {
-      showSuccess(`Transaction sent: ${hash.slice(0,10)}...`);
-    },
-    onError: (error) => {
-      showError(error.shortMessage || error.message);
-    }
+    onSuccess: (hash) => { showSuccess(`Transaction sent: ${hash.slice(0,10)}...`); },
+    onError: (error) => { showError(error.shortMessage || error.message); }
   });
 
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
 
-  const { data: botGameInfo, refetch: refetchBotGame } = useReadContract({
-    address: contractAddress,
-    abi: contractAbi,
-    functionName: 'getBotGameInfo',
-    args: [address as `0x${string}`],
-    enabled: !!address,
-  });
+  const [botGameInfo, setBotGameInfo] = useState<readonly [bigint, bigint, boolean, boolean] | null>(null);
+  const [potentialPayout, setPotentialPayout] = useState<bigint | null>(null);
+
+  const [gameId, startTime, isActive, isFinished] = botGameInfo || [0n, 0n, false, false];
+
+  const fetchBotGameData = useCallback(async () => {
+    if (!publicClient || !address) return;
+    try {
+      const info = await publicClient.readContract({
+        address: contractAddress,
+        abi: contractAbi,
+        functionName: 'getBotGameInfo',
+        args: [address],
+      });
+      setBotGameInfo(info);
+
+      const [currentId, , currentIsActive] = info;
+      if (currentId > 0 && currentIsActive) {
+        const payout = await publicClient.readContract({
+          address: contractAddress,
+          abi: contractAbi,
+          functionName: 'getPotentialPayout',
+          args: [currentId],
+        });
+        setPotentialPayout(payout);
+      } else {
+        setPotentialPayout(null);
+      }
+    } catch (e) {
+      console.error("Failed to fetch bot game data:", e);
+    }
+  }, [publicClient, address]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (address) {
-        refetchBotGame();
-      }
-    }, 3000); // Poll every 3 seconds
+    fetchBotGameData();
+    const interval = setInterval(fetchBotGameData, 3000);
     return () => clearInterval(interval);
-  }, [address, refetchBotGame]);
-
-  const [gameId, startTime, isActive, isFinished] = (botGameInfo && Array.isArray(botGameInfo))
-    ? botGameInfo as [bigint, bigint, boolean, boolean]
-    : [0n, 0n, false, false];
-
-  const { data: potentialPayout, refetch: refetchPayout } = useReadContract({
-    address: contractAddress,
-    abi: contractAbi,
-    functionName: 'getPotentialPayout',
-    args: [gameId],
-    enabled: !!gameId && isActive,
-  });
+  }, [fetchBotGameData]);
 
   const [multiplier, setMultiplier] = useState(1);
   const [timeRemaining, setTimeRemaining] = useState(BOT_ROUND_DURATION);
@@ -74,25 +81,19 @@ const BotMode = () => {
   useEffect(() => {
     if (isConfirmed) {
       showSuccess("Transaction confirmed!");
-      refetchBotGame();
-      refetchPayout();
+      fetchBotGameData();
       resetWriteContract();
     }
-  }, [isConfirmed, refetchBotGame, refetchPayout, resetWriteContract]);
+  }, [isConfirmed, fetchBotGameData, resetWriteContract]);
 
   useEffect(() => {
     if (isActive) {
       if (gameLoopRef.current) clearInterval(gameLoopRef.current);
-
       gameLoopRef.current = setInterval(() => {
         const elapsed = (Date.now() / 1000) - Number(startTime);
-        const newMultiplier = 1 + (elapsed / 5);
-        setMultiplier(newMultiplier);
-
-        const newTimeRemaining = Math.max(0, BOT_ROUND_DURATION - elapsed);
-        setTimeRemaining(newTimeRemaining);
-
-        if (newTimeRemaining <= 0) {
+        setMultiplier(1 + (elapsed / 5));
+        setTimeRemaining(Math.max(0, BOT_ROUND_DURATION - elapsed));
+        if (timeRemaining <= 0) {
           if (gameLoopRef.current) clearInterval(gameLoopRef.current);
         }
       }, 1000);
@@ -101,11 +102,10 @@ const BotMode = () => {
       setMultiplier(1);
       setTimeRemaining(BOT_ROUND_DURATION);
     }
-
     return () => {
       if (gameLoopRef.current) clearInterval(gameLoopRef.current);
     };
-  }, [isActive, startTime]);
+  }, [isActive, startTime, timeRemaining]);
 
   const handleStart = () => {
     writeContract({
@@ -147,7 +147,7 @@ const BotMode = () => {
           <div className="bot-stat">
             <div className="bot-stat-label">Potential Payout</div>
             <div className="bot-stat-value payout">
-              {potentialPayout ? formatEther(potentialPayout as bigint) : '0.00'} STT
+              {potentialPayout ? formatEther(potentialPayout) : '0.00'} STT
             </div>
           </div>
           <div className="bot-stat">

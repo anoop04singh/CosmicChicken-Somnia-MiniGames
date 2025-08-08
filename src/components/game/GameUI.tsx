@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useAccount, useDisconnect, useBalance, useReadContract } from 'wagmi';
+import { useState, useEffect, useCallback } from 'react';
+import { useAccount, useDisconnect, useBalance, useReadContract, usePublicClient } from 'wagmi';
 import { Button } from '@/components/ui/button';
 import RetroWindow from './RetroWindow';
 import MultiplayerMode from './MultiplayerMode';
@@ -16,6 +16,7 @@ const GameUI = () => {
   const { address } = useAccount();
   const { disconnect } = useDisconnect();
   const { data: balance } = useBalance({ address });
+  const publicClient = usePublicClient();
 
   const { data: ownerAddress } = useReadContract({
     address: contractAddress,
@@ -23,18 +24,31 @@ const GameUI = () => {
     functionName: 'owner',
   });
 
-  const { data: globalStats, isLoading: isLoadingStats, refetch } = useReadContract({
-    address: contractAddress,
-    abi: contractAbi,
-    functionName: 'getGlobalStats',
-  });
+  const [globalStats, setGlobalStats] = useState<readonly [bigint, bigint, bigint] | null>(null);
+  const [isLoadingStats, setIsLoadingStats] = useState(true);
+
+  const fetchGlobalStats = useCallback(async () => {
+    if (!publicClient) return;
+    try {
+      const data = await publicClient.readContract({
+        address: contractAddress,
+        abi: contractAbi,
+        functionName: 'getGlobalStats',
+      });
+      setGlobalStats(data);
+    } catch (e) {
+      console.error("Failed to fetch global stats:", e);
+      setGlobalStats(null);
+    } finally {
+      setIsLoadingStats(false);
+    }
+  }, [publicClient]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      refetch();
-    }, 5000); // Poll every 5 seconds
+    fetchGlobalStats();
+    const interval = setInterval(fetchGlobalStats, 5000);
     return () => clearInterval(interval);
-  }, [refetch]);
+  }, [fetchGlobalStats]);
 
   const isOwner = !!(address && ownerAddress && address.toLowerCase() === (ownerAddress as string).toLowerCase());
 
