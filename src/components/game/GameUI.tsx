@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useAccount, useDisconnect, useBalance, useReadContract } from 'wagmi';
+import { useAccount, useDisconnect, useBalance, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { Button } from '@/components/ui/button';
 import RetroWindow from './RetroWindow';
 import MultiplayerMode from './MultiplayerMode';
@@ -8,6 +8,7 @@ import OwnerPanel from './OwnerPanel';
 import { Rocket, Users, Bot, Wallet, Loader2 } from 'lucide-react';
 import { formatEther } from 'viem';
 import { contractAddress, contractAbi } from '@/lib/abi';
+import { showError, showSuccess } from '@/utils/toast';
 
 type GameMode = 'multiplayer' | 'bot';
 
@@ -35,13 +36,46 @@ const GameUI = () => {
     functionName: 'currentRoundId',
   });
 
+  const { data: playerWinnings, refetch: refetchPlayerWinnings } = useReadContract({
+    address: contractAddress,
+    abi: contractAbi,
+    functionName: 'getPlayerWinnings',
+    args: [address as `0x${string}`],
+    enabled: !!address,
+  });
+
+  const { data: withdrawHash, writeContract, isPending, reset } = useWriteContract();
+
+  const { isLoading: isConfirming } = useWaitForTransactionReceipt({
+    hash: withdrawHash,
+    onSuccess: () => {
+      showSuccess('Winnings withdrawn!');
+      refetchPlayerWinnings();
+      reset();
+    },
+    onError: (error) => {
+      showError(error.shortMessage || error.message);
+    }
+  });
+
+  const handleWithdraw = () => {
+    writeContract({
+      address: contractAddress,
+      abi: contractAbi,
+      functionName: 'withdrawWinnings',
+    });
+  };
+
   useEffect(() => {
     const interval = setInterval(() => {
       refetchRoundInfo();
       refetchCurrentRoundId();
+      if (address) {
+        refetchPlayerWinnings();
+      }
     }, 5000);
     return () => clearInterval(interval);
-  }, [refetchRoundInfo, refetchCurrentRoundId]);
+  }, [refetchRoundInfo, refetchCurrentRoundId, refetchPlayerWinnings, address]);
 
   const isOwner = !!(address && ownerAddress && address.toLowerCase() === (ownerAddress as string).toLowerCase());
 
@@ -59,6 +93,17 @@ const GameUI = () => {
             </div>
           </div>
           <div className="flex items-center gap-4">
+            <div className="text-xs text-right">
+                <div>Winnings:</div>
+                <div>{playerWinnings ? `${parseFloat(formatEther(playerWinnings as bigint)).toFixed(4)} STT` : '0.00 STT'}</div>
+            </div>
+            <Button 
+                onClick={handleWithdraw} 
+                disabled={isPending || isConfirming || !playerWinnings || playerWinnings === 0n}
+                className="retro-btn-success disconnect-btn"
+            >
+                {isPending || isConfirming ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Withdraw'}
+            </Button>
              <div className="text-xs text-right">
                 <div>{address?.slice(0, 6)}...{address?.slice(-4)}</div>
                 <div>{balance ? `${parseFloat(formatEther(balance.value)).toFixed(4)} ${balance.symbol}` : '...'}</div>
