@@ -21,14 +21,14 @@ const MultiplayerMode = () => {
     address: contractAddress,
     abi: contractAbi,
     functionName: 'isPlayerInCurrentRound',
-    args: [address!],
+    args: [address],
     enabled: !!address,
   });
 
   const [timeLeft, setTimeLeft] = useState(0);
 
   useEffect(() => {
-    if (roundInfo && Array.isArray(roundInfo)) {
+    if (roundInfo && Array.isArray(roundInfo) && roundInfo.length >= 2) {
       const endTime = Number(roundInfo[1]);
       const now = Math.floor(Date.now() / 1000);
       setTimeLeft(Math.max(0, endTime - now));
@@ -50,8 +50,25 @@ const MultiplayerMode = () => {
     }
   }, [isConfirmed, refetch, refetchPlayerStatus, reset]);
 
-  const prizePool = (roundInfo && Array.isArray(roundInfo)) ? formatEther(roundInfo[0] as bigint) : '0';
-  const playerCount = (roundInfo && Array.isArray(roundInfo)) ? Number(roundInfo[3]) : 0;
+  const prizePool = (roundInfo && Array.isArray(roundInfo) && roundInfo.length >= 1) ? formatEther(roundInfo[0] as bigint) : '0';
+  const playerCount = (roundInfo && Array.isArray(roundInfo) && roundInfo.length >= 4) ? Number(roundInfo[3]) : 0;
+
+  const handleJoin = () => {
+    writeContract({
+      address: contractAddress,
+      abi: contractAbi,
+      functionName: 'joinRound',
+      value: parseEther('0.01'),
+    });
+  };
+
+  const handleEject = () => {
+    writeContract({
+      address: contractAddress,
+      abi: contractAbi,
+      functionName: 'ejectFromRound',
+    });
+  };
 
   return (
     <>

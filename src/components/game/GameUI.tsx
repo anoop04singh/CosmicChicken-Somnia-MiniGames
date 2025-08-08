@@ -30,7 +30,7 @@ const GameUI = () => {
     watch: true,
   });
 
-  const [playersOnline, activeRounds, totalWon] = (globalStats && Array.isArray(globalStats))
+  const [playersOnline, activeRounds, totalWon] = (globalStats && Array.isArray(globalStats) && globalStats.length >= 3)
     ? [
         Number(globalStats[0]),
         Number(globalStats[1]),

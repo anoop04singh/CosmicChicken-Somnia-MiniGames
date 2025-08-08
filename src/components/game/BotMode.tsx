@@ -27,7 +27,7 @@ const BotMode = () => {
     address: contractAddress,
     abi: contractAbi,
     functionName: 'getBotGameInfo',
-    args: [address!],
+    args: [address],
     enabled: !!address,
     watch: true,
   });
@@ -48,19 +48,20 @@ const BotMode = () => {
   const [timeRemaining, setTimeRemaining] = useState(BOT_ROUND_DURATION);
 
   const handleReset = () => {
+    if (!address) return;
     writeContract({
       address: contractAddress,
       abi: contractAbi,
       functionName: 'resetBotGame',
-      args: [address!]
+      args: [address]
     });
   };
 
   useEffect(() => {
-    if (isFinished) {
+    if (isFinished && address) {
       handleReset();
     }
-  }, [isFinished]);
+  }, [isFinished, address]);
 
   useEffect(() => {
     if (isConfirmed) {
