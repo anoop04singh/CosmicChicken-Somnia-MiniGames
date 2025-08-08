@@ -1,10 +1,9 @@
 import { useConnect } from 'wagmi';
 import RetroWindow from './RetroWindow';
 import { Button } from '@/components/ui/button';
-import { InjectedConnector } from 'wagmi/connectors/injected';
 
 const ConnectWallet = () => {
-  const { connect } = useConnect();
+  const { connectors, connect } = useConnect();
 
   return (
     <div className="desktop-center-full">
@@ -28,12 +27,15 @@ const ConnectWallet = () => {
             This game runs on the Somnia Testnet.
           </div>
           <div className="flex flex-col items-center gap-2 mt-4">
-            <Button
-              onClick={() => connect({ connector: new InjectedConnector() })}
-              className="retro-btn-primary connect-btn w-full"
-            >
-              Connect Wallet
-            </Button>
+            {connectors.map((connector) => (
+              <Button
+                key={connector.uid}
+                onClick={() => connect({ connector })}
+                className="retro-btn-primary connect-btn w-full"
+              >
+                Connect with {connector.name}
+              </Button>
+            ))}
           </div>
         </div>
       </RetroWindow>
