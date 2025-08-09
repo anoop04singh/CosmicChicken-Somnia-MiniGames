@@ -5,12 +5,21 @@ import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 import { showError, showSuccess } from '@/utils/toast';
+import GameOverDisplay from './GameOverDisplay';
 
 const BOT_ROUND_DURATION = 30; // seconds
 
 const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBalanceUpdate: () => void; }) => {
   const { address } = useAccount();
   const animationFrameRef = useRef<number | null>(null);
+
+  // --- State for Game Over UI ---
+  const [isGameOver, setIsGameOver] = useState(false);
+  const [gameResult, setGameResult] = useState<{
+    playerWon: boolean;
+    payout: bigint;
+    finalMultiplier: bigint;
+  } | null>(null);
 
   // --- Blockchain Data Hooks ---
   const { data: hash, writeContract, isPending: isWritePending, reset: resetWriteContract } = useWriteContract({
@@ -42,11 +51,22 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     eventName: 'BotGameEnded',
     onLogs(logs) {
       logs.forEach(log => {
-        const { player, playerWon, payout } = log.args;
-        if (player && playerWon && payout && address && player.toLowerCase() === address.toLowerCase()) {
-          showSuccess(`You won! Payout: ${formatEther(payout as bigint)} STT. Transferred to your wallet.`);
-          onGameWin();
-          onBalanceUpdate();
+        const { player, playerWon, payout, finalMultiplier } = log.args;
+        if (player && address && player.toLowerCase() === address.toLowerCase()) {
+          setGameResult({ 
+            playerWon: playerWon as boolean, 
+            payout: payout as bigint, 
+            finalMultiplier: finalMultiplier as bigint 
+          });
+          setIsGameOver(true);
+          
+          if (playerWon) {
+            showSuccess(`You won! Payout: ${formatEther(payout as bigint)} STT.`);
+            onGameWin();
+            onBalanceUpdate();
+          } else {
+            showError("The bot ejected first! Better luck next time.");
+          }
         }
       });
     },
@@ -59,7 +79,6 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
 
   // --- Derived State from Blockchain Data ---
   const isActive = botGameInfo ? botGameInfo[5] : false;
-  const isFinished = botGameInfo ? !botGameInfo[5] && Number(activeGameId) > 0 : false;
   const startTime = botGameInfo ? botGameInfo[2] : 0n;
   const entryFee = botGameInfo ? botGameInfo[4] : 0n;
 
@@ -81,19 +100,13 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     });
   };
   
-  const handleReset = () => {
-    if (!address) return;
-    writeContract({
-      address: contractAddress,
-      abi: contractAbi,
-      functionName: 'resetBotGame',
-      args: [address]
-    });
+  const handlePlayAgain = () => {
+    setIsGameOver(false);
+    setGameResult(null);
+    refetchActiveGameId();
   };
 
   // --- Effects ---
-
-  // Effect to poll for authoritative game state from the blockchain
   useEffect(() => {
     const interval = setInterval(() => {
       if (address) {
@@ -106,7 +119,6 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     return () => clearInterval(interval);
   }, [address, activeGameId, refetchActiveGameId, refetchBotGameInfo]);
 
-  // Effect to handle post-transaction logic
   useEffect(() => {
     if (isConfirmed) {
       showSuccess("Transaction confirmed!");
@@ -114,35 +126,22 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
       resetWriteContract();
     }
   }, [isConfirmed, refetchActiveGameId, resetWriteContract]);
-  
-  // Effect to automatically reset the game when it's finished
-  useEffect(() => {
-    if (isFinished) {
-      handleReset();
-    }
-  }, [isFinished]);
 
-  // The core animation loop for a smooth UI
   useEffect(() => {
     const loop = () => {
       const elapsed = (Date.now() / 1000) - Number(startTime);
-      
-      if (elapsed < 0) { // Game start time is in the future, wait.
+      if (elapsed < 0) {
         animationFrameRef.current = requestAnimationFrame(loop);
         return;
       }
-
       const newMultiplier = 1 + (elapsed / 5);
       const newTimeRemaining = Math.max(0, BOT_ROUND_DURATION - elapsed);
-      
       setDisplayMultiplier(newMultiplier);
       setDisplayTimeRemaining(newTimeRemaining);
-
       if (entryFee > 0n) {
         const payout = (entryFee * BigInt(Math.floor(newMultiplier * 10000))) / 10000n;
         setDisplayPayout(payout);
       }
-
       if (newTimeRemaining > 0) {
         animationFrameRef.current = requestAnimationFrame(loop);
       }
@@ -151,7 +150,6 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     if (isActive && startTime > 0) {
       animationFrameRef.current = requestAnimationFrame(loop);
     } else {
-      // Reset display values when not active
       setDisplayMultiplier(1.00);
       setDisplayTimeRemaining(BOT_ROUND_DURATION);
       setDisplayPayout(entryFee > 0n ? entryFee : null);
@@ -165,6 +163,10 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   }, [isActive, startTime, entryFee]);
 
   const isPending = isWritePending || isConfirming;
+
+  if (isGameOver && gameResult) {
+    return <GameOverDisplay result={gameResult} onPlayAgain={handlePlayAgain} />;
+  }
 
   return (
     <>
@@ -200,7 +202,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
       <div className="game-status">
         <div className="action-buttons">
           {!isActive && (
-            <Button onClick={handleStart} disabled={isPending} className="retro-btn-warning action-btn pulse">
+            <Button onClick={handleStart} disabled={isPending || !!activeGameId} className="retro-btn-warning action-btn pulse">
               {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Start Bot Game (0.01 STT)
             </Button>
