@@ -49,7 +49,7 @@ const GameUI = () => {
   const { isLoading: isConfirming } = useWaitForTransactionReceipt({
     hash: withdrawHash,
     onSuccess: () => {
-      showSuccess('Winnings withdrawn!');
+      showSuccess('Winnings withdrawn successfully!');
       refetchPlayerWinnings();
       refetchWalletBalance();
       reset();
@@ -65,6 +65,11 @@ const GameUI = () => {
       abi: contractAbi,
       functionName: 'withdrawWinnings',
     });
+  };
+
+  const handleGameWin = () => {
+    refetchPlayerWinnings();
+    refetchWalletBalance();
   };
 
   useEffect(() => {
@@ -101,7 +106,7 @@ const GameUI = () => {
             <Button 
                 onClick={handleWithdraw} 
                 disabled={isPending || isConfirming || !playerWinnings || playerWinnings === 0n}
-                className="retro-btn-success disconnect-btn"
+                className={`retro-btn-success disconnect-btn ${playerWinnings && playerWinnings > 0n ? 'pulse' : ''}`}
             >
                 {isPending || isConfirming ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Withdraw'}
             </Button>
@@ -151,7 +156,7 @@ const GameUI = () => {
         </div>
 
         <div className="game-mode-content">
-          {mode === 'multiplayer' ? <MultiplayerMode onGameWin={refetchPlayerWinnings} /> : <BotMode onGameWin={refetchPlayerWinnings} onBalanceUpdate={refetchWalletBalance} />}
+          {mode === 'multiplayer' ? <MultiplayerMode onGameWin={handleGameWin} /> : <BotMode onGameWin={handleGameWin} onBalanceUpdate={refetchWalletBalance} />}
         </div>
         
         {isOwner && (

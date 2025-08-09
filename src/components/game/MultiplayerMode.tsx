@@ -35,7 +35,7 @@ const MultiplayerMode = ({ onGameWin }: { onGameWin: () => void; }) => {
       logs.forEach(log => {
         const { winner, prizeAmount } = log.args;
         if (winner && prizeAmount && address && winner.toLowerCase() === address.toLowerCase()) {
-          showSuccess(`You won the round! Prize: ${formatEther(prizeAmount as bigint)} STT. Added to your balance.`);
+          showSuccess(`You won! Prize: ${formatEther(prizeAmount as bigint)} STT. Added to your withdrawable winnings.`);
           onGameWin();
         }
       });
