@@ -1,4 +1,4 @@
-export const contractAddress = '0xc3C370754182D9E82127F0Ed5f6A1e9442ba550f';
+export const contractAddress = '0xc3C370754182D9E82127F0Ed5f6A1e9442ba550f'; // IMPORTANT: REPLACE WITH YOUR NEW V2 CONTRACT ADDRESS
 
 export const contractAbi = [
 	{

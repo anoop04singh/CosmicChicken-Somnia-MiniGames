@@ -290,50 +290,54 @@ contract CosmicChickenV2 {
         
         BotGame storage game = botGames[gameId];
         require(game.isActive, "Game not active");
-        
-        game.playerEjected = true;
-        
+
+        // --- CHECKS ---
         if (block.timestamp >= game.startTime + BOT_GAME_MAX_DURATION) {
-            _endBotGame(gameId, false, 0, BOT_MAX_MULTIPLIER);
+            _endBotGameAsLoss(gameId, BOT_MAX_MULTIPLIER);
             return;
         }
         
         if (block.timestamp >= game.botEjectTime) {
-            uint256 botEjectMultiplier = getCurrentMultiplierForGame(gameId);
-            _endBotGame(gameId, false, 0, botEjectMultiplier);
+            uint256 botEjectMultiplier = _calculateMultiplier(game.startTime);
+            _endBotGameAsLoss(gameId, botEjectMultiplier);
             return;
         }
-        
-        uint256 finalMultiplier = getCurrentMultiplierForGame(gameId);
+
+        // --- EFFECTS ---
+        uint256 finalMultiplier = _calculateMultiplier(game.startTime);
         uint256 grossPayout = (game.entryFee * finalMultiplier) / 100;
         uint256 houseEdgeAmount = (grossPayout * HOUSE_EDGE) / 10000;
         uint256 netPayout = grossPayout - houseEdgeAmount;
-        
+
         if (netPayout > address(this).balance) {
             netPayout = address(this).balance;
         }
+
+        game.isActive = false;
+        game.gameEnded = true;
+        game.playerEjected = true;
+        playerActiveBotGame[game.player] = 0;
         
-        _endBotGame(gameId, true, netPayout, finalMultiplier);
-        
+        emit BotGameEnded(gameId, game.player, true, netPayout, finalMultiplier);
+
+        // --- INTERACTIONS ---
         if (netPayout > 0) {
             (bool sent, ) = payable(msg.sender).call{value: netPayout}("");
-            require(sent, "Failed to send Ether");
+            require(sent, "Payout transfer failed");
         }
     }
     
-    function _endBotGame(uint256 gameId, bool playerWon, uint256 payout, uint256 finalMultiplier) internal {
+    function _endBotGameAsLoss(uint256 gameId, uint256 finalMultiplier) internal {
         BotGame storage game = botGames[gameId];
         require(game.isActive, "Game already ended");
         game.isActive = false;
         game.gameEnded = true;
         playerActiveBotGame[game.player] = 0;
-        emit BotGameEnded(gameId, game.player, playerWon, payout, finalMultiplier);
+        emit BotGameEnded(gameId, game.player, false, 0, finalMultiplier);
     }
 
-    function getCurrentMultiplierForGame(uint256 gameId) internal view returns (uint256) {
-        BotGame storage game = botGames[gameId];
-        if (!game.isActive) return BOT_BASE_MULTIPLIER;
-        uint256 timeElapsed = block.timestamp - game.startTime;
+    function _calculateMultiplier(uint256 startTime) internal view returns (uint256) {
+        uint256 timeElapsed = block.timestamp - startTime;
         uint256 currentMultiplier = BOT_BASE_MULTIPLIER + (timeElapsed * BOT_MULTIPLIER_INCREMENT);
         return currentMultiplier > BOT_MAX_MULTIPLIER ? BOT_MAX_MULTIPLIER : currentMultiplier;
     }
@@ -360,7 +364,7 @@ contract CosmicChickenV2 {
         if (game.isActive && block.timestamp < game.startTime + BOT_GAME_MAX_DURATION) {
             remaining = (game.startTime + BOT_GAME_MAX_DURATION) - block.timestamp;
         }
-        return (game.id, game.player, game.startTime, getCurrentMultiplierForGame(gameId), game.entryFee, game.isActive, remaining, block.timestamp >= game.botEjectTime, block.timestamp >= game.startTime + BOT_GAME_MAX_DURATION);
+        return (game.id, game.player, game.startTime, _calculateMultiplier(game.startTime), game.entryFee, game.isActive, remaining, block.timestamp >= game.botEjectTime, block.timestamp >= game.startTime + BOT_GAME_MAX_DURATION);
     }
 
     function getPlayerActiveBotGame(address player) external view returns (uint256) {
@@ -369,12 +373,12 @@ contract CosmicChickenV2 {
         return gameId;
     }
 
-    function getCurrentBotMultiplier(uint256 gameId) external view returns (uint256) { return getCurrentMultiplierForGame(gameId); }
+    function getCurrentBotMultiplier(uint256 gameId) external view returns (uint256) { return _calculateMultiplier(botGames[gameId].startTime); }
 
     function getPotentialPayout(uint256 gameId) external view returns (uint256) {
         BotGame storage game = botGames[gameId];
         if (!game.isActive) return 0;
-        uint256 currentMult = getCurrentMultiplierForGame(gameId);
+        uint256 currentMult = _calculateMultiplier(game.startTime);
         uint256 grossPayout = (game.entryFee * currentMult) / 100;
         return grossPayout - ((grossPayout * HOUSE_EDGE) / 10000);
     }
