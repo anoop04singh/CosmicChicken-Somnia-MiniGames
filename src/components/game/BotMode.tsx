@@ -8,7 +8,7 @@ import { showError, showSuccess } from '@/utils/toast';
 
 const BOT_ROUND_DURATION = 30; // seconds
 
-const BotMode = ({ onGameWin }: { onGameWin: () => void; }) => {
+const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBalanceUpdate: () => void; }) => {
   const { address } = useAccount();
   const animationFrameRef = useRef<number | null>(null);
 
@@ -44,8 +44,9 @@ const BotMode = ({ onGameWin }: { onGameWin: () => void; }) => {
       logs.forEach(log => {
         const { player, playerWon, payout } = log.args;
         if (player && playerWon && payout && address && player.toLowerCase() === address.toLowerCase()) {
-          showSuccess(`You won! Payout: ${formatEther(payout as bigint)} STT. Added to your balance.`);
+          showSuccess(`You won! Payout: ${formatEther(payout as bigint)} STT. Transferred to your wallet.`);
           onGameWin();
+          onBalanceUpdate();
         }
       });
     },

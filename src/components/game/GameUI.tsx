@@ -16,7 +16,7 @@ const GameUI = () => {
   const [mode, setMode] = useState<GameMode>('multiplayer');
   const { address } = useAccount();
   const { disconnect } = useDisconnect();
-  const { data: balance } = useBalance({ address });
+  const { data: balance, refetch: refetchWalletBalance } = useBalance({ address });
 
   const { data: ownerAddress } = useReadContract({
     address: contractAddress,
@@ -51,6 +51,7 @@ const GameUI = () => {
     onSuccess: () => {
       showSuccess('Winnings withdrawn!');
       refetchPlayerWinnings();
+      refetchWalletBalance();
       reset();
     },
     onError: (error) => {
@@ -150,7 +151,7 @@ const GameUI = () => {
         </div>
 
         <div className="game-mode-content">
-          {mode === 'multiplayer' ? <MultiplayerMode onGameWin={refetchPlayerWinnings} /> : <BotMode onGameWin={refetchPlayerWinnings} />}
+          {mode === 'multiplayer' ? <MultiplayerMode onGameWin={refetchPlayerWinnings} /> : <BotMode onGameWin={refetchPlayerWinnings} onBalanceUpdate={refetchWalletBalance} />}
         </div>
         
         {isOwner && (
