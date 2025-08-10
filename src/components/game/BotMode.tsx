@@ -42,11 +42,18 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     enabled: !!address,
   });
 
-  const { isLoading: isStartConfirming } = useWaitForTransactionReceipt({
+  useWaitForTransactionReceipt({
     hash: startHash,
-    onSuccess: async (data) => {
-      console.log('[BotMode] Start transaction confirmed:', data);
-      if (data.status === 'success') {
+    onSettled: async (data, error) => {
+      console.log('[BotMode] Start transaction settled. Data:', data, 'Error:', error);
+      if (error) {
+        console.error('[BotMode] Transaction failed onsettled:', error);
+        showError(error.shortMessage || 'Transaction failed.');
+        resetStartContract();
+        return;
+      }
+      if (data && data.status === 'success') {
+        console.log('[BotMode] Transaction successful. Receipt:', data);
         showSuccess("Transaction confirmed! Fetching game details...");
         onBalanceUpdate();
         
@@ -67,14 +74,12 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
         console.error('[BotMode] Failed to sync new game ID after polling.');
         showError("Could not sync with the new game. Please refresh the page.");
         resetStartContract();
-      } else {
-        console.error('[BotMode] Start transaction failed with status:', data.status);
+      } else if (data && data.status === 'reverted') {
+        console.error('[BotMode] Transaction reverted. Receipt:', data);
+        showError('Transaction failed. The contract reverted the transaction. You may already be in a game.');
+        resetStartContract();
       }
     },
-    onError: (error) => {
-      console.error('[BotMode] Error waiting for start transaction receipt:', error);
-      showError(error.shortMessage || error.message);
-    }
   });
 
   // --- HOOKS FOR EJECTING FROM A GAME ---
@@ -287,10 +292,10 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   }, [currentIsActive, startTime, gameEntryFee, maxMultiplierData, entryFeeData, playMultiplierSound, currentGameId]);
 
   const isEjecting = isEjectPending || isEjectConfirming;
-  const isStarting = isStartPending || isStartConfirming;
+  const isStarting = isStartPending; // We don't use isStartConfirming here anymore as onSettled handles it.
   const formattedEntryFee = entryFeeData ? formatEther(entryFeeData as bigint) : '...';
   const isButtonDisabled = isStarting || isLoadingFee || !!currentGameId;
-  const buttonText = isStarting ? (isStartConfirming ? 'Confirming...' : 'Sending...') : `Start Bot Game (${formattedEntryFee} STT)`;
+  const buttonText = isStarting ? 'Sending...' : `Start Bot Game (${formattedEntryFee} STT)`;
 
   if (isGameOver && gameResult) {
     console.log('[BotMode] Rendering GameOverDisplay with result:', gameResult);
