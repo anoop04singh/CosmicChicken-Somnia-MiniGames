@@ -16,7 +16,7 @@ import { Separator } from '@/components/ui/separator';
 type GameMode = 'multiplayer' | 'bot';
 
 const GameUI = () => {
-  const [mode, setMode] = useState<GameMode>('multiplayer');
+  const [mode, setMode] = useState<GameMode>('bot');
   const { address } = useAccount();
   const { disconnect } = useDisconnect();
   const { data: balance, refetch: refetchWalletBalance } = useBalance({ address });
@@ -155,6 +155,7 @@ const GameUI = () => {
             >
               <Users className="inline-block mr-2" size={16} />
               Multiplayer Royale
+              <span className="coming-soon-badge">SOON</span>
             </button>
             <button
               className={`mode-tab ${mode === 'bot' ? 'active' : ''}`}

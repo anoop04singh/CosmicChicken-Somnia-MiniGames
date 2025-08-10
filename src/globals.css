@@ -789,6 +789,9 @@
   cursor: pointer;
   transition: all 0.3s ease;
   text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .mode-tab:last-child {
@@ -2086,4 +2089,30 @@ button:focus,
   font-size: 14px;
   color: #c0c0c0;
   max-width: 300px;
+}
+
+.coming-soon-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 5px;
+  font-size: 9px;
+  font-weight: bold;
+  background: linear-gradient(to bottom, #ffff00 0%, #ffaa00 100%);
+  color: #800000;
+  border: 1px solid #800000;
+  border-radius: 3px;
+  text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.5);
+  text-transform: uppercase;
+  line-height: 1;
+  vertical-align: middle;
+  animation: badge-glow 1.5s ease-in-out infinite alternate;
+}
+
+@keyframes badge-glow {
+  from {
+    box-shadow: 0 0 3px #ffff00;
+  }
+  to {
+    box-shadow: 0 0 8px #ffaa00, 0 0 12px #ffaa00;
+  }
 }
