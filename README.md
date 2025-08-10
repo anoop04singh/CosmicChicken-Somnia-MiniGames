@@ -119,7 +119,7 @@ This diagram illustrates the flow of information in the application:
 
 ### What Happens On-Chain (The Smart Contract)
 
-The smart contract (`CosmicChickenV2.sol`) is the **single source of truth**. It lives permanently on the blockchain and is responsible for all critical logic:
+The smart contract (`CosmicChickenV3.sol`) is the **single source of truth**. It lives permanently on the blockchain and is responsible for all critical logic:
 *   **Holding Funds:** The contract holds all entry fees in the prize pool and any player winnings pending withdrawal.
 *   **Enforcing Rules:** It validates every action. It checks if a player has paid the correct fee, if a round is active, etc.
 *   **Managing State:** It keeps track of the current round, who is playing, when they joined, and the game's start/end times.
