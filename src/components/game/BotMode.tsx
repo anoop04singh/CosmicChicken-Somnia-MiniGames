@@ -32,6 +32,12 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     functionName: 'entryFee',
   });
 
+  const { data: maxMultiplierData } = useReadContract({
+    address: contractAddress,
+    abi: contractAbi,
+    functionName: 'BOT_MAX_MULTIPLIER',
+  });
+
   const { data: activeGameId, refetch: refetchActiveGameId } = useReadContract({
     address: contractAddress,
     abi: contractAbi,
@@ -106,6 +112,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
 
   const handleStart = () => {
     if (!entryFeeData) return;
+    resetWriteContract(); // Reset state before new write
     writeContract({
       address: contractAddress,
       abi: contractAbi,
@@ -123,6 +130,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   };
 
   const handleEject = () => {
+    resetWriteContract(); // Reset state before new write
     writeContract({
       address: contractAddress,
       abi: contractAbi,
@@ -162,7 +170,13 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
         animationFrameRef.current = requestAnimationFrame(loop);
         return;
       }
-      const newMultiplier = 1 + (elapsed / 5);
+
+      const maxMultiplier = maxMultiplierData ? Number(maxMultiplierData) / 100 : Infinity;
+      let newMultiplier = 1 + (elapsed / 5);
+      if (newMultiplier > maxMultiplier) {
+        newMultiplier = maxMultiplier;
+      }
+
       const newTimeRemaining = Math.max(0, BOT_ROUND_DURATION - elapsed);
       setDisplayMultiplier(newMultiplier);
       setDisplayTimeRemaining(newTimeRemaining);
@@ -170,7 +184,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
         const payout = (gameEntryFee * BigInt(Math.floor(newMultiplier * 10000))) / 10000n;
         setDisplayPayout(payout);
       }
-      if (newTimeRemaining > 0) {
+      if (newTimeRemaining > 0 && newMultiplier < maxMultiplier) {
         animationFrameRef.current = requestAnimationFrame(loop);
       }
     };
@@ -188,7 +202,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [currentIsActive, startTime, gameEntryFee]);
+  }, [currentIsActive, startTime, gameEntryFee, maxMultiplierData]);
 
   const isPending = isWritePending || isConfirming;
   const formattedEntryFee = entryFeeData ? formatEther(entryFeeData as bigint) : '...';
