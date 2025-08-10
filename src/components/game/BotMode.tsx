@@ -13,6 +13,7 @@ import { useAudio } from '@/contexts/AudioContext';
 const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBalanceUpdate: () => void; }) => {
   const { address } = useAccount();
   const animationFrameRef = useRef<number | null>(null);
+  const pollerRef = useRef<NodeJS.Timeout | null>(null);
   const { playSound, playMultiplierSound, resetMultiplierSound } = useAudio();
 
   // --- STATE MANAGEMENT ---
@@ -42,7 +43,6 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
 
   // --- HOOKS FOR STARTING A GAME ---
   const { 
-    data: startHash, 
     writeContract: startGame, 
     isPending: isStartPending,
     reset: resetStartContract
@@ -54,25 +54,6 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     functionName: 'playerActiveBotGame',
     args: [address as `0x${string}`],
     enabled: !!address,
-  });
-
-  useWaitForTransactionReceipt({
-    hash: startHash,
-    onSettled: (data, error) => {
-      if (error) {
-        showError(error.shortMessage || 'Transaction failed.');
-        resetStartContract();
-        return;
-      }
-      if (data && data.status === 'success') {
-        showSuccess("Transaction confirmed! Starting game...");
-        onBalanceUpdate();
-        resetStartContract();
-      } else if (data && data.status === 'reverted') {
-        showError('Transaction failed. You may already be in a game.');
-        resetStartContract();
-      }
-    },
   });
 
   // --- HOOKS FOR EJECTING FROM A GAME ---
@@ -167,21 +148,6 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   useWatchContractEvent({
     address: contractAddress,
     abi: contractAbi,
-    eventName: 'BotGameStarted',
-    onLogs(logs) {
-      logs.forEach(async (log) => {
-        const args = log.args as { gameId?: bigint; player?: `0x${string}` };
-        if (args.player === address) {
-          setCurrentGameId(args.gameId as bigint);
-          fetchInitialGameData(args.gameId as bigint);
-        }
-      });
-    },
-  });
-
-  useWatchContractEvent({
-    address: contractAddress,
-    abi: contractAbi,
     eventName: 'BotGameEnded',
     onLogs(logs) {
       logs.forEach(log => {
@@ -204,14 +170,45 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   const handleStart = () => {
     playSound('start');
     if (!entryFeeData) return;
+
+    const initialGameId = activeGameId;
+
     startGame({
       address: contractAddress,
       abi: contractAbi,
       functionName: 'startBotGame',
       value: entryFeeData as bigint,
     }, {
-      onSuccess: (txHash) => showSuccess(`Transaction sent: ${txHash.slice(0,10)}...`),
-      onError: (error) => showError(error.shortMessage || error.message)
+      onSuccess: (txHash) => {
+        showSuccess(`Transaction sent: ${txHash.slice(0,10)}...`);
+        onBalanceUpdate();
+
+        const pollStartTime = Date.now();
+        const pollTimeout = 30000; // 30 seconds
+
+        pollerRef.current = setInterval(async () => {
+          if (Date.now() - pollStartTime > pollTimeout) {
+            showError("Game start timed out. Please refresh.");
+            if (pollerRef.current) clearInterval(pollerRef.current);
+            resetStartContract();
+            return;
+          }
+
+          const { data: newActiveGameId } = await refetchActiveGameId();
+          
+          if (newActiveGameId && newActiveGameId > 0n && newActiveGameId !== initialGameId) {
+            if (pollerRef.current) clearInterval(pollerRef.current);
+            showSuccess("Game started!");
+            setCurrentGameId(newActiveGameId);
+            fetchInitialGameData(newActiveGameId);
+            resetStartContract();
+          }
+        }, 1500); // Poll every 1.5 seconds
+      },
+      onError: (error) => {
+        showError(error.shortMessage || error.message);
+        if (pollerRef.current) clearInterval(pollerRef.current);
+      }
     });
   };
 
@@ -232,6 +229,15 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     resetGameState();
     refetchActiveGameId();
   };
+
+  // Cleanup poller on unmount
+  useEffect(() => {
+    return () => {
+      if (pollerRef.current) {
+        clearInterval(pollerRef.current);
+      }
+    };
+  }, []);
 
   // --- EFFECT: Animation loop for the multiplier ---
   useEffect(() => {
