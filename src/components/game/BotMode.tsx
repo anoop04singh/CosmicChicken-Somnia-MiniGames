@@ -1,4 +1,6 @@
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useWatchContractEvent } from 'wagmi';
+import { readContract } from '@wagmi/core';
+import { config } from '@/lib/wagmi';
 import { contractAddress, contractAbi } from '@/lib/abi';
 import { parseEther, formatEther } from 'viem';
 import { Button } from '@/components/ui/button';
@@ -13,10 +15,9 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   const { address } = useAccount();
   const animationFrameRef = useRef<number | null>(null);
   const prevIsActive = useRef<boolean | undefined>();
+  const gameIdToFetch = useRef<bigint | null>(null);
 
   const [isGameOver, setIsGameOver] = useState(false);
-  const [isFinalizing, setIsFinalizing] = useState(false);
-  const [showResetButton, setShowResetButton] = useState(false);
   const [gameResult, setGameResult] = useState<{
     playerWon: boolean;
     payout: bigint;
@@ -63,54 +64,6 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     }
   }, [activeGameId, currentGameId]);
 
-  useWatchContractEvent({
-    address: contractAddress,
-    abi: contractAbi,
-    eventName: 'BotGameEnded',
-    onLogs(logs) {
-      console.log("EVENT: 'BotGameEnded' logs received:", logs);
-      logs.forEach(log => {
-        const { gameId, player, playerWon, payout, finalMultiplier } = log.args;
-        
-        console.log("EVENT: Processing log with args:", { gameId, player, playerWon, payout, finalMultiplier });
-        console.log("EVENT: State values for comparison:", { userAddress: address, storedGameId: currentGameId });
-
-        const playerAddressMatch = player && address && (player as string).toLowerCase() === address.toLowerCase();
-        const gameIdMatch = currentGameId && gameId && BigInt(gameId as any) === currentGameId;
-
-        if (playerAddressMatch && gameIdMatch) {
-          console.log("EVENT: Player address and game ID match! Setting game result.");
-          setGameResult({ 
-            playerWon: playerWon as boolean, 
-            payout: payout as bigint, 
-            finalMultiplier: finalMultiplier as bigint 
-          });
-          setIsGameOver(true);
-          setIsFinalizing(false);
-          setCurrentGameId(null);
-          
-          onGameWin();
-          onBalanceUpdate();
-
-          if (playerWon) {
-            showSuccess(`You won! Payout: ${formatEther(payout as bigint)} STT.`);
-          } else {
-            showError("The bot ejected first! Better luck next time.");
-          }
-        } else {
-            console.log("EVENT: Condition not met. Mismatched data:", { 
-                playerAddressMatch,
-                gameIdMatch,
-                eventPlayer: player, 
-                userAddress: address,
-                eventGameId: gameId,
-                storedGameId: currentGameId,
-            });
-        }
-      });
-    },
-  });
-
   const [displayMultiplier, setDisplayMultiplier] = useState(1.00);
   const [displayTimeRemaining, setDisplayTimeRemaining] = useState(BOT_ROUND_DURATION);
   const [displayPayout, setDisplayPayout] = useState<bigint | null>(null);
@@ -120,32 +73,46 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   const gameEntryFee = botGameInfo ? botGameInfo[4] : 0n;
 
   useEffect(() => {
-    if (prevIsActive.current === true && currentIsActive === false) {
+    if (prevIsActive.current === true && currentIsActive === false && !isGameOver) {
       console.log("STATE: Game has transitioned from active to inactive on-chain.");
-      if (!isGameOver) {
-        console.log("STATE: 'isGameOver' is false. Entering 'isFinalizing' state as a fallback.");
-        setIsFinalizing(true);
+      if (currentGameId) {
+        gameIdToFetch.current = currentGameId;
+        console.log(`STATE: Storing game ID ${gameIdToFetch.current} to fetch its result.`);
+        
+        const fetchResult = async () => {
+            if (!gameIdToFetch.current) return;
+            console.log(`DATA_FETCH: Calling getBotGameResult for game ID ${gameIdToFetch.current}`);
+            try {
+                const result = await readContract(config, {
+                    address: contractAddress,
+                    abi: contractAbi,
+                    functionName: 'getBotGameResult',
+                    args: [gameIdToFetch.current],
+                });
+
+                const [playerWon, payout, finalMultiplier] = result;
+                console.log("DATA_FETCH: Successfully fetched game result:", { playerWon, payout, finalMultiplier });
+
+                setGameResult({ playerWon, payout, finalMultiplier });
+                setIsGameOver(true);
+                setCurrentGameId(null);
+                gameIdToFetch.current = null;
+
+            } catch (error) {
+                console.error("DATA_FETCH_ERROR: Failed to fetch game result.", error);
+                showError("Could not retrieve game result. Please try playing again.");
+                handlePlayAgain(); // Reset state on error
+            }
+        };
+
+        fetchResult();
       } else {
-        console.log("STATE: 'isGameOver' is true. Skipping 'isFinalizing' because the result was already processed by the event listener.");
+        console.log("STATE: Game is inactive, but no game ID was stored. Cannot fetch result.");
       }
     }
     prevIsActive.current = currentIsActive;
-  }, [currentIsActive, isGameOver]);
+  }, [currentIsActive, isGameOver, currentGameId]);
 
-  useEffect(() => {
-    let timeout: NodeJS.Timeout;
-    if (isFinalizing) {
-      setShowResetButton(false);
-      console.log("STATE: 'isFinalizing' is true. Setting 15s timeout for manual reset button.");
-      timeout = setTimeout(() => {
-        console.log("STATE: 15s timeout elapsed. Showing reset button as a fallback.");
-        setShowResetButton(true);
-      }, 15000);
-    } else {
-      setShowResetButton(false);
-    }
-    return () => clearTimeout(timeout);
-  }, [isFinalizing]);
 
   const handleStart = () => {
     console.log("ACTION: handleStart called.");
@@ -195,10 +162,9 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     console.log("ACTION: handlePlayAgain called. Resetting all game state.");
     setIsGameOver(false);
     setGameResult(null);
-    setIsFinalizing(false);
     setCurrentGameId(null);
     prevIsActive.current = undefined;
-    setShowResetButton(false);
+    gameIdToFetch.current = null;
     refetchActiveGameId();
   };
 
@@ -260,25 +226,6 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
 
   if (isGameOver && gameResult) {
     return <GameOverDisplay result={gameResult} onPlayAgain={handlePlayAgain} />;
-  }
-
-  if (isFinalizing) {
-    return (
-      <div className="transaction-status">
-        <Loader2 className="loading-spinner" />
-        <div className="flex flex-col items-center gap-4">
-          <p className="status-text">Finalizing round, waiting for blockchain confirmation...</p>
-          {showResetButton && (
-            <>
-              <p className="text-xs text-gray-400">Taking too long? You can reset.</p>
-              <Button onClick={handlePlayAgain} className="retro-btn-warning">
-                Reset Game
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
-    );
   }
 
   return (

@@ -651,6 +651,35 @@ export const contractAbi = [
 		"inputs": [
 			{
 				"internalType": "uint256",
+				"name": "_gameId",
+				"type": "uint256"
+			}
+		],
+		"name": "getBotGameResult",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "playerWon",
+				"type": "bool"
+			},
+			{
+				"internalType": "uint256",
+				"name": "payout",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "finalMultiplier",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
 				"name": "gameId",
 				"type": "uint256"
 			}
