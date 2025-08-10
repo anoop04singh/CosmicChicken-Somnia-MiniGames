@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAccount, useDisconnect, useBalance, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { Button } from '@/components/ui/button';
 import RetroWindow from './RetroWindow';
-import MultiplayerMode from './MultiplayerMode';
+import ComingSoon from './ComingSoon';
 import BotMode from './BotMode';
 import OwnerPanel from './OwnerPanel';
 import { Rocket, Users, Bot, Wallet, Loader2 } from 'lucide-react';
@@ -168,7 +168,7 @@ const GameUI = () => {
 
         <div className="flex-1 min-h-0 overflow-y-auto pr-2">
             <div className="game-mode-content">
-                {mode === 'multiplayer' ? <MultiplayerMode onGameWin={handleGameWin} /> : <BotMode onGameWin={handleGameWin} onBalanceUpdate={refetchWalletBalance} />}
+                {mode === 'multiplayer' ? <ComingSoon /> : <BotMode onGameWin={handleGameWin} onBalanceUpdate={refetchWalletBalance} />}
             </div>
             
             {isOwner && (

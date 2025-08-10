@@ -2033,3 +2033,57 @@ button:focus,
     filter: hue-rotate(30deg);
   }
 }
+
+/* Coming Soon Panel */
+.coming-soon-panel {
+  background: linear-gradient(to bottom, #333333 0%, #1a1a1a 100%);
+  border: 2px solid #ffff00;
+  padding: 40px 20px;
+  text-align: center;
+  font-family: 'Courier New', monospace;
+  border-radius: 4px;
+  box-shadow: 
+    inset 0 0 15px rgba(255, 255, 0, 0.2),
+    0 0 20px rgba(255, 255, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 250px;
+}
+
+.coming-soon-title {
+  font-size: 24px;
+  font-weight: bold;
+  color: #ffff00;
+  text-shadow: 0 0 10px #ffff00;
+  margin-bottom: 20px;
+}
+
+.coming-soon-content {
+  display: flex;
+  align-items: center;
+}
+
+.coming-soon-text {
+  font-size: 36px;
+  font-weight: bold;
+  color: #00ff00;
+  text-shadow: 0 0 15px #00ff00;
+  letter-spacing: 2px;
+}
+
+.blinking-cursor {
+  font-size: 36px;
+  color: #00ff00;
+  animation: blink 1s step-end infinite;
+  margin-left: 8px;
+}
+
+.coming-soon-subtext {
+  margin-top: 20px;
+  font-size: 14px;
+  color: #c0c0c0;
+  max-width: 300px;
+}
