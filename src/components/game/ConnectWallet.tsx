@@ -1,9 +1,16 @@
 import { useConnect } from 'wagmi';
 import RetroWindow from './RetroWindow';
 import { Button } from '@/components/ui/button';
+import { useSound } from '@/contexts/SoundContext';
 
 const ConnectWallet = () => {
   const { connectors, connect } = useConnect();
+  const { playSound } = useSound();
+
+  const handleConnect = (connector: any) => {
+    playSound('click');
+    connect({ connector });
+  };
 
   return (
     <div className="desktop-center-full">
@@ -30,7 +37,7 @@ const ConnectWallet = () => {
             {connectors.map((connector) => (
               <Button
                 key={connector.uid}
-                onClick={() => connect({ connector })}
+                onClick={() => handleConnect(connector)}
                 className="retro-btn-primary connect-btn w-full"
               >
                 Connect with {connector.name}

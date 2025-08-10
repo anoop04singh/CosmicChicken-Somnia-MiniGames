@@ -2,6 +2,7 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { formatEther } from 'viem';
 import { cn } from '@/lib/utils';
+import { useSound } from '@/contexts/SoundContext';
 
 interface GameOverDisplayProps {
   result: {
@@ -13,9 +14,15 @@ interface GameOverDisplayProps {
 }
 
 const GameOverDisplay: React.FC<GameOverDisplayProps> = ({ result, onPlayAgain }) => {
+  const { playSound } = useSound();
   const { playerWon, payout, finalMultiplier } = result;
   const formattedMultiplier = (Number(finalMultiplier) / 100).toFixed(2);
   const formattedPayout = formatEther(payout);
+
+  const handlePlayAgainClick = () => {
+    playSound('click');
+    onPlayAgain();
+  };
 
   return (
     <div className={cn(
@@ -34,7 +41,7 @@ const GameOverDisplay: React.FC<GameOverDisplayProps> = ({ result, onPlayAgain }
           <strong>Your Payout:</strong> {formattedPayout} STT
         </div>
       </div>
-      <Button onClick={onPlayAgain} className="retro-btn-primary action-btn mt-6">
+      <Button onClick={handlePlayAgainClick} className="retro-btn-primary action-btn mt-6">
         Play Again
       </Button>
     </div>

@@ -5,11 +5,13 @@ import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { showSuccess } from '@/utils/toast';
+import { useSound } from '@/contexts/SoundContext';
 
 const MultiplayerMode = ({ onGameWin }: { onGameWin: () => void; }) => {
   const { address } = useAccount();
   const { data: hash, writeContract, isPending, reset } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
+  const { playSound } = useSound();
 
   const { data: roundInfo, refetch, isLoading: isLoadingRound } = useReadContract({
     address: contractAddress,
@@ -41,6 +43,7 @@ const MultiplayerMode = ({ onGameWin }: { onGameWin: () => void; }) => {
       logs.forEach(log => {
         const { winner, prizeAmount } = log.args;
         if (winner && prizeAmount && address && winner.toLowerCase() === address.toLowerCase()) {
+          playSound('win');
           showSuccess(`You won! Prize: ${formatEther(prizeAmount as bigint)} STT. Added to your withdrawable winnings.`);
           onGameWin();
         }
@@ -82,6 +85,7 @@ const MultiplayerMode = ({ onGameWin }: { onGameWin: () => void; }) => {
   }, [isConfirmed, refetch, refetchPlayerStatus, reset]);
 
   const handleJoin = () => {
+    playSound('join');
     if (!entryFee) return;
     writeContract({
       address: contractAddress,
@@ -92,6 +96,7 @@ const MultiplayerMode = ({ onGameWin }: { onGameWin: () => void; }) => {
   };
 
   const handleEject = () => {
+    playSound('eject');
     writeContract({
       address: contractAddress,
       abi: contractAbi,

@@ -9,6 +9,8 @@ import { Rocket, Users, Bot, Wallet, Loader2 } from 'lucide-react';
 import { formatEther } from 'viem';
 import { contractAddress, contractAbi } from '@/lib/abi';
 import { showError, showSuccess } from '@/utils/toast';
+import SoundControl from './SoundControl';
+import { useSound } from '@/contexts/SoundContext';
 
 type GameMode = 'multiplayer' | 'bot';
 
@@ -17,6 +19,7 @@ const GameUI = () => {
   const { address } = useAccount();
   const { disconnect } = useDisconnect();
   const { data: balance, refetch: refetchWalletBalance } = useBalance({ address });
+  const { playSound } = useSound();
 
   const { data: ownerAddress } = useReadContract({
     address: contractAddress,
@@ -60,11 +63,17 @@ const GameUI = () => {
   });
 
   const handleWithdraw = () => {
+    playSound('click');
     writeContract({
       address: contractAddress,
       abi: contractAbi,
       functionName: 'withdrawWinnings',
     });
+  };
+
+  const handleDisconnect = () => {
+    playSound('click');
+    disconnect();
   };
 
   const handleGameWin = () => {
@@ -99,6 +108,7 @@ const GameUI = () => {
             </div>
           </div>
           <div className="flex items-center gap-4">
+            <SoundControl />
             <div className="text-xs text-right">
                 <div>Winnings:</div>
                 <div>{playerWinnings ? `${parseFloat(formatEther(playerWinnings as bigint)).toFixed(4)} STT` : '0.00 STT'}</div>
@@ -114,7 +124,7 @@ const GameUI = () => {
                 <div>{address?.slice(0, 6)}...{address?.slice(-4)}</div>
                 <div>{balance ? `${parseFloat(formatEther(balance.value)).toFixed(4)} ${balance.symbol}` : '...'}</div>
              </div>
-            <Button onClick={() => disconnect()} className="retro-btn-danger disconnect-btn">Disconnect</Button>
+            <Button onClick={handleDisconnect} className="retro-btn-danger disconnect-btn">Disconnect</Button>
           </div>
         </div>
 
@@ -140,14 +150,14 @@ const GameUI = () => {
           <div className="mode-tabs">
             <button
               className={`mode-tab ${mode === 'multiplayer' ? 'active' : ''}`}
-              onClick={() => setMode('multiplayer')}
+              onClick={() => { setMode('multiplayer'); playSound('click'); }}
             >
               <Users className="inline-block mr-2" size={16} />
               Multiplayer Royale
             </button>
             <button
               className={`mode-tab ${mode === 'bot' ? 'active' : ''}`}
-              onClick={() => setMode('bot')}
+              onClick={() => { setMode('bot'); playSound('click'); }}
             >
               <Bot className="inline-block mr-2" size={16} />
               Speed Round (vs Bot)
