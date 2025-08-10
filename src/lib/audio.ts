@@ -47,25 +47,25 @@ const playTone = (freq: number, duration: number, volume: number, type: Oscillat
 
 export const playClickSound = () => {
   initAudio();
-  playTone(440, 0.05, 0.1, 'triangle');
-  playTone(880, 0.05, 0.1, 'triangle');
+  playTone(440, 0.05, 0.2, 'triangle');
+  playTone(880, 0.05, 0.2, 'triangle');
 };
 
 export const playStartSound = () => {
   initAudio();
   if (!audioCtx) return;
-  playTone(261.63, 0.1, 0.2, 'square'); // C4
-  setTimeout(() => playTone(329.63, 0.1, 0.2, 'square'), 50); // E4
-  setTimeout(() => playTone(392.00, 0.1, 0.2, 'square'), 100); // G4
+  playTone(261.63, 0.1, 0.4, 'square'); // C4
+  setTimeout(() => playTone(329.63, 0.1, 0.4, 'square'), 50); // E4
+  setTimeout(() => playTone(392.00, 0.1, 0.4, 'square'), 100); // G4
 };
 
 export const playWinSound = () => {
   initAudio();
   if (!audioCtx) return;
-  playTone(523.25, 0.1, 0.2, 'square'); // C5
-  setTimeout(() => playTone(659.25, 0.1, 0.2, 'square'), 100); // E5
-  setTimeout(() => playTone(783.99, 0.1, 0.2, 'square'), 200); // G5
-  setTimeout(() => playTone(1046.50, 0.2, 0.2, 'square'), 300); // C6
+  playTone(523.25, 0.1, 0.4, 'square'); // C5
+  setTimeout(() => playTone(659.25, 0.1, 0.4, 'square'), 100); // E5
+  setTimeout(() => playTone(783.99, 0.1, 0.4, 'square'), 200); // G5
+  setTimeout(() => playTone(1046.50, 0.2, 0.4, 'square'), 300); // C6
 };
 
 export const playExplosionSound = () => {
@@ -88,7 +88,7 @@ export const playExplosionSound = () => {
   noiseFilter.frequency.exponentialRampToValueAtTime(100, now + 0.5);
 
   const noiseGain = audioCtx.createGain();
-  noiseGain.gain.setValueAtTime(0.3, now);
+  noiseGain.gain.setValueAtTime(0.5, now);
   noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
 
   noiseSource.connect(noiseFilter);
@@ -100,8 +100,8 @@ export const playExplosionSound = () => {
 
 export const playEjectSound = () => {
   initAudio();
-  playTone(880, 0.1, 0.2, 'sawtooth');
-  setTimeout(() => playTone(1046.50, 0.15, 0.2, 'sawtooth'), 50);
+  playTone(880, 0.1, 0.4, 'sawtooth');
+  setTimeout(() => playTone(1046.50, 0.15, 0.4, 'sawtooth'), 50);
 };
 
 let lastMultiplierTick = 0;
@@ -114,7 +114,7 @@ export const playMultiplierIncreaseSound = (multiplier: number) => {
     lastMultiplierTick = currentTick;
     const baseFreq = 200;
     const freq = baseFreq + (multiplier * 50);
-    playTone(Math.min(freq, 2000), 0.05, 0.05, 'sine');
+    playTone(Math.min(freq, 2000), 0.05, 0.15, 'sine');
   }
 };
 

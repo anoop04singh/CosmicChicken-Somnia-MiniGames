@@ -166,16 +166,18 @@ const GameUI = () => {
           </div>
         </div>
 
-        <div className="game-mode-content">
-          {mode === 'multiplayer' ? <MultiplayerMode onGameWin={handleGameWin} /> : <BotMode onGameWin={handleGameWin} onBalanceUpdate={refetchWalletBalance} />}
+        <div className="flex-1 min-h-0 overflow-y-auto pr-2">
+            <div className="game-mode-content">
+                {mode === 'multiplayer' ? <MultiplayerMode onGameWin={handleGameWin} /> : <BotMode onGameWin={handleGameWin} onBalanceUpdate={refetchWalletBalance} />}
+            </div>
+            
+            {isOwner && (
+            <>
+                <Separator className="my-2 bg-gray-500" />
+                <OwnerPanel />
+            </>
+            )}
         </div>
-        
-        {isOwner && (
-          <>
-            <Separator className="my-2 bg-gray-500" />
-            <OwnerPanel />
-          </>
-        )}
       </RetroWindow>
     </div>
   );

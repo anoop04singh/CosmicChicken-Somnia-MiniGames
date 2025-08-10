@@ -811,13 +811,10 @@
 
 /* Enhanced Game Mode Content */
 .game-mode-content {
-  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 12px;
   animation: content-fade 0.5s ease-out;
-  min-height: 0; /* Fix for flexbox overflow */
-  overflow-y: auto;
 }
 
 @keyframes content-fade {
