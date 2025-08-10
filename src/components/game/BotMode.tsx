@@ -1,10 +1,4 @@
-import { 
-  useAccount, 
-  useReadContract, 
-  useWriteContract, 
-  useWaitForTransactionReceipt, 
-  useWatchContractEvent 
-} from 'wagmi';
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useWatchContractEvent } from 'wagmi';
 import { contractAddress, contractAbi } from '@/lib/abi';
 import { formatEther } from 'viem';
 import { Button } from '@/components/ui/button';
@@ -23,31 +17,98 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
 
   // --- STATE MANAGEMENT ---
   const [isGameOver, setIsGameOver] = useState(false);
-  const [gameResult, setGameResult] = useState<{ playerWon: boolean; payout: bigint; finalMultiplier: bigint; } | null>(null);
+  const [gameResult, setGameResult] = useState<{
+    playerWon: boolean;
+    payout: bigint;
+    finalMultiplier: bigint;
+  } | null>(null);
   const [currentGameId, setCurrentGameId] = useState<bigint | null>(null);
 
   console.log('[BotMode] Render. Current Game ID:', currentGameId?.toString());
 
   // --- HOOKS FOR STARTING A GAME ---
-  const { data: startHash, writeContract: startGame, isPending: isStartPending, reset: resetStartContract } = useWriteContract();
+  const { 
+    data: startHash, 
+    writeContract: startGame, 
+    isPending: isStartPending,
+    reset: resetStartContract
+  } = useWriteContract();
 
   const { data: activeGameId, refetch: refetchActiveGameId } = useReadContract({
     address: contractAddress,
     abi: contractAbi,
-    functionName: 'playerActiveBotGame', // ✅ fixed function name
+    functionName: 'getPlayerActiveBotGame',
     args: [address as `0x${string}`],
     enabled: !!address,
   });
 
-  // Fetch Bot Game Info
-  const { data: botGameInfo, refetch: refetchBotGameInfo } = useReadContract({
-    address: contractAddress,
-    abi: contractAbi,
-    functionName: 'getBotGameInfo',
-    args: [currentGameId as bigint],
-    enabled: !!currentGameId && Number(currentGameId) > 0,
+  useWaitForTransactionReceipt({
+    hash: startHash,
+    onSettled: async (data, error) => {
+      console.log('[BotMode] Start transaction settled. Data:', data, 'Error:', error);
+      if (error) {
+        console.error('[BotMode] Transaction failed onsettled:', error);
+        showError(error.shortMessage || 'Transaction failed.');
+        resetStartContract();
+        return;
+      }
+      if (data && data.status === 'success') {
+        console.log('[BotMode] Transaction successful. Receipt:', data);
+        showSuccess("Transaction confirmed! Fetching game details...");
+        onBalanceUpdate();
+        
+        console.log('[BotMode] Actively polling for new game ID...');
+        for (let i = 0; i < 5; i++) { // Retry up to 5 times
+          console.log(`[BotMode] Polling attempt ${i + 1}...`);
+          const { data: newGameId } = await refetchActiveGameId();
+          console.log('[BotMode] Polled. Found game ID:', newGameId?.toString());
+          if (newGameId && newGameId > 0n && newGameId !== activeGameId) {
+            console.log('[BotMode] New game ID found and set:', newGameId.toString());
+            setCurrentGameId(newGameId);
+            resetStartContract();
+            return; // Success, exit the loop
+          }
+          await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s before retrying
+        }
+        
+        console.error('[BotMode] Failed to sync new game ID after polling.');
+        showError("Could not sync with the new game. Please refresh the page.");
+        resetStartContract();
+      } else if (data && data.status === 'reverted') {
+        console.error('[BotMode] Transaction reverted. Receipt:', data);
+        showError('Transaction failed. The contract reverted the transaction. You may already be in a game.');
+        resetStartContract();
+      }
+    },
   });
 
+  // --- HOOKS FOR EJECTING FROM A GAME ---
+  const { 
+    data: ejectHash, 
+    writeContract: ejectGame, 
+    isPending: isEjectPending,
+    reset: resetEjectContract
+  } = useWriteContract();
+
+  const { isLoading: isEjectConfirming } = useWaitForTransactionReceipt({
+    hash: ejectHash,
+    onSuccess: (data) => {
+      console.log('[BotMode] Eject transaction confirmed:', data);
+      if (data.status === 'success') {
+        // The BotGameEnded event will handle the final state change.
+        onBalanceUpdate();
+        resetEjectContract();
+      } else {
+        console.error('[BotMode] Eject transaction failed with status:', data.status);
+      }
+    },
+    onError: (error) => {
+      console.error('[BotMode] Error waiting for eject transaction receipt:', error);
+      showError(error.shortMessage || error.message);
+    }
+  });
+
+  // --- WAGMI HOOKS for reading contract data ---
   const { data: entryFeeData, isLoading: isLoadingFee } = useReadContract({
     address: contractAddress,
     abi: contractAbi,
@@ -60,77 +121,22 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     functionName: 'BOT_MAX_MULTIPLIER',
   });
 
-  // --- Wait for transaction receipt after starting a game ---
-  useWaitForTransactionReceipt({
-    hash: startHash,
-    onSettled: async (data, error) => {
-      console.log('[BotMode] Start transaction settled. Data:', data, 'Error:', error);
-      if (error) {
-        console.error('[BotMode] Transaction failed:', error);
-        showError(error.shortMessage || 'Transaction failed.');
-        resetStartContract();
-        return;
-      }
-      if (data?.status === 'success') {
-        showSuccess("Transaction confirmed! Fetching game details...");
-        onBalanceUpdate();
-
-        // Poll for new game ID
-        for (let i = 0; i < 5; i++) {
-          const { data: newGameId } = await refetchActiveGameId();
-          if (newGameId && newGameId > 0n) {
-            setCurrentGameId(newGameId);
-            refetchBotGameInfo();
-            resetStartContract();
-            return;
-          }
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-        showError("Could not sync with the new game. Please refresh.");
-        resetStartContract();
-      } else if (data?.status === 'reverted') {
-        showError('Transaction failed. You may already be in a game.');
-        resetStartContract();
-      }
-    },
+  const { data: botGameInfo } = useReadContract({
+    address: contractAddress,
+    abi: contractAbi,
+    functionName: 'getBotGameInfo',
+    args: [currentGameId as bigint],
+    enabled: !!currentGameId && Number(currentGameId) > 0,
   });
 
-  // --- HOOKS FOR EJECTING FROM A GAME ---
-  const { data: ejectHash, writeContract: ejectGame, isPending: isEjectPending, reset: resetEjectContract } = useWriteContract();
-
-  const { isLoading: isEjectConfirming } = useWaitForTransactionReceipt({
-    hash: ejectHash,
-    onSuccess: () => {
-      onBalanceUpdate();
-      resetEjectContract();
-    },
-    onError: (error) => {
-      showError(error.shortMessage || error.message);
-    }
-  });
-
-  // --- Sync local state with on-chain state ---
+  // --- EFFECT: Sync with on-chain state on page load/refresh ---
   useEffect(() => {
+    console.log('[BotMode] useEffect (activeGameId sync). Current activeGameId:', activeGameId?.toString(), 'Current local gameId:', currentGameId?.toString());
     if (activeGameId && activeGameId > 0n && !currentGameId) {
+      console.log('[BotMode] Syncing local game ID from activeGameId:', activeGameId.toString());
       setCurrentGameId(activeGameId);
     }
   }, [activeGameId, currentGameId]);
-
-  // --- EVENT LISTENER: Game Started ---
-  useWatchContractEvent({
-    address: contractAddress,
-    abi: contractAbi,
-    eventName: 'BotGameStarted',
-    onLogs(logs) {
-      logs.forEach(log => {
-        if (log.args.player === address) {
-          console.log('[BotMode] BotGameStarted event:', log.args);
-          setCurrentGameId(log.args.gameId);
-          refetchBotGameInfo();
-        }
-      });
-    },
-  });
 
   // --- EVENT LISTENER: Game Ended ---
   useWatchContractEvent({
@@ -139,12 +145,15 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     eventName: 'BotGameEnded',
     onLogs(logs) {
       logs.forEach(log => {
-        if (log.args.player === address && log.args.gameId?.toString() === currentGameId?.toString()) {
-          console.log('[BotMode] BotGameEnded event:', log.args);
-          setGameResult({
-            playerWon: log.args.playerWon as boolean,
-            payout: log.args.payout as bigint,
-            finalMultiplier: log.args.finalMultiplier as bigint
+        const { gameId, player, playerWon, payout, finalMultiplier } = log.args;
+        console.log('[BotMode] BotGameEnded event received:', log.args);
+        if (player === address && gameId === currentGameId) {
+          console.log('[BotMode] Event matches current player and game. Processing result.');
+          if (playerWon) playSound('win'); else playSound('explosion');
+          setGameResult({ 
+            playerWon: playerWon as boolean, 
+            payout: payout as bigint, 
+            finalMultiplier: finalMultiplier as bigint 
           });
           setIsGameOver(true);
           setCurrentGameId(null);
@@ -155,25 +164,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     },
   });
 
-  // --- EVENT LISTENER: Player Ejected ---
-  useWatchContractEvent({
-    address: contractAddress,
-    abi: contractAbi,
-    eventName: 'PlayerEjected',
-    onLogs(logs) {
-      logs.forEach(log => {
-        if (log.args.player === address) {
-          console.log('[BotMode] PlayerEjected event:', log.args);
-          setIsGameOver(true);
-          setGameResult(prev => prev || { playerWon: true, payout: BigInt(0), finalMultiplier: BigInt(0) });
-          setCurrentGameId(null);
-          onGameWin();
-        }
-      });
-    },
-  });
-
-  // --- UI STATE ---
+  // --- UI STATE DERIVATION ---
   const [displayMultiplier, setDisplayMultiplier] = useState(1.00);
   const [displayTimeRemaining, setDisplayTimeRemaining] = useState(BOT_ROUND_DURATION);
   const [displayPayout, setDisplayPayout] = useState<bigint | null>(null);
@@ -182,33 +173,102 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   const startTime = botGameInfo ? botGameInfo[2] : 0n;
   const gameEntryFee = botGameInfo ? botGameInfo[3] : 0n;
 
-  // --- Animation loop for multiplier ---
+  // --- HANDLERS ---
+  const handleStart = () => {
+    console.log('[BotMode] handleStart called.');
+    playSound('start');
+    if (!entryFeeData) {
+      console.error('[BotMode] handleStart failed: entryFeeData is missing.');
+      return;
+    }
+    startGame({
+      address: contractAddress,
+      abi: contractAbi,
+      functionName: 'startBotGame',
+      value: entryFeeData as bigint,
+    }, {
+      onSuccess: (txHash) => {
+        console.log('[BotMode] Start transaction sent. Hash:', txHash);
+        showSuccess(`Transaction sent: ${txHash.slice(0,10)}...`);
+      },
+      onError: (error) => {
+        console.error('[BotMode] Start transaction submission error:', error);
+        showError(error.shortMessage || error.message);
+      }
+    });
+  };
+
+  const handleEject = () => {
+    console.log('[BotMode] handleEject called for game ID:', currentGameId?.toString());
+    playSound('eject');
+    ejectGame({
+      address: contractAddress,
+      abi: contractAbi,
+      functionName: 'ejectFromBotGame',
+    }, {
+      onSuccess: (hash) => {
+        console.log('[BotMode] Eject transaction sent. Hash:', hash);
+        showSuccess(`Eject transaction sent: ${hash.slice(0,10)}...`);
+      },
+      onError: (error) => {
+        console.error('[BotMode] Eject transaction submission error:', error);
+        showError(error.shortMessage || error.message);
+      }
+    });
+  };
+  
+  const handlePlayAgain = () => {
+    console.log('[BotMode] handlePlayAgain called. Resetting state.');
+    playSound('click');
+    setIsGameOver(false);
+    setGameResult(null);
+    setCurrentGameId(null);
+    refetchActiveGameId();
+    resetMultiplierSound();
+  };
+
+  // --- EFFECT: Animation loop for the multiplier ---
   useEffect(() => {
     if (currentIsActive && startTime > 0) {
       console.log('[BotMode] Animation loop started for game ID:', currentGameId?.toString());
+    } else {
+      console.log('[BotMode] Animation loop condition not met. currentIsActive:', currentIsActive, 'startTime:', startTime.toString());
     }
 
     const loop = () => {
       if (!startTime || startTime === 0n || !currentIsActive) {
-        if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+        if (animationFrameRef.current) {
+          console.log('[BotMode] Animation loop stopping.');
+          cancelAnimationFrame(animationFrameRef.current);
+        }
         return;
       }
       const elapsed = (Date.now() / 1000) - Number(startTime);
+      if (elapsed < 0) {
+        animationFrameRef.current = requestAnimationFrame(loop);
+        return;
+      }
+
       const maxMultiplier = maxMultiplierData ? Number(maxMultiplierData) / 100 : Infinity;
       let newMultiplier = 1 + (elapsed / 5);
       if (newMultiplier > maxMultiplier) newMultiplier = maxMultiplier;
 
       playMultiplierSound(newMultiplier);
+
       const newTimeRemaining = Math.max(0, BOT_ROUND_DURATION - elapsed);
       setDisplayMultiplier(newMultiplier);
       setDisplayTimeRemaining(newTimeRemaining);
-
       if (gameEntryFee > 0n) {
         const payout = (gameEntryFee * BigInt(Math.floor(newMultiplier * 10000))) / 10000n;
         setDisplayPayout(payout);
       }
       if (newTimeRemaining > 0 && newMultiplier < maxMultiplier && currentIsActive) {
         animationFrameRef.current = requestAnimationFrame(loop);
+      } else {
+        if (animationFrameRef.current) {
+          console.log('[BotMode] Animation loop ending (time up or max multiplier reached).');
+          cancelAnimationFrame(animationFrameRef.current);
+        }
       }
     };
 
@@ -218,57 +278,27 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
       setDisplayMultiplier(1.00);
       setDisplayTimeRemaining(BOT_ROUND_DURATION);
       setDisplayPayout(entryFeeData ?? null);
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
     }
 
     return () => {
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      if (animationFrameRef.current) {
+        console.log('[BotMode] Animation loop cleanup on unmount/re-render.');
+        cancelAnimationFrame(animationFrameRef.current);
+      }
     };
   }, [currentIsActive, startTime, gameEntryFee, maxMultiplierData, entryFeeData, playMultiplierSound, currentGameId]);
 
-  // --- Handlers ---
-  const handleStart = () => {
-    if (!entryFeeData) return;
-    playSound('start');
-    startGame({
-      address: contractAddress,
-      abi: contractAbi,
-      functionName: 'startBotGame',
-      value: entryFeeData as bigint,
-    }, {
-      onSuccess: (txHash) => showSuccess(`Transaction sent: ${txHash.slice(0,10)}...`),
-      onError: (error) => showError(error.shortMessage || error.message)
-    });
-  };
-
-  const handleEject = () => {
-    playSound('eject');
-    ejectGame({
-      address: contractAddress,
-      abi: contractAbi,
-      functionName: 'ejectFromBotGame',
-    }, {
-      onSuccess: (hash) => showSuccess(`Eject transaction sent: ${hash.slice(0,10)}...`),
-      onError: (error) => showError(error.shortMessage || error.message)
-    });
-  };
-
-  const handlePlayAgain = () => {
-    playSound('click');
-    setIsGameOver(false);
-    setGameResult(null);
-    setCurrentGameId(null);
-    refetchActiveGameId();
-    resetMultiplierSound();
-  };
-
   const isEjecting = isEjectPending || isEjectConfirming;
-  const isStarting = isStartPending;
+  const isStarting = isStartPending; // We don't use isStartConfirming here anymore as onSettled handles it.
   const formattedEntryFee = entryFeeData ? formatEther(entryFeeData as bigint) : '...';
   const isButtonDisabled = isStarting || isLoadingFee || !!currentGameId;
   const buttonText = isStarting ? 'Sending...' : `Start Bot Game (${formattedEntryFee} STT)`;
 
   if (isGameOver && gameResult) {
+    console.log('[BotMode] Rendering GameOverDisplay with result:', gameResult);
     return <GameOverDisplay result={gameResult} onPlayAgain={handlePlayAgain} />;
   }
 
