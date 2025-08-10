@@ -310,20 +310,21 @@ contract CosmicChickenV2 {
         return multiplier > BOT_MAX_MULTIPLIER ? BOT_MAX_MULTIPLIER : multiplier;
     }
 
-    function getBotGameInfo(uint256 gameId) public view returns (uint256, address, uint256, uint256, uint256, bool, uint256, bool, bool) {
-        if (gameId == 0) return (0, address(0), 0, 0, 0, false, 0, false, false);
+    function getBotGameInfo(uint256 gameId) public view returns (uint256, address, uint256, uint256, bool, uint256, bool, bool) {
+        if (gameId == 0) return (0, address(0), 0, 0, false, 0, false, false);
         BotGame storage game = botGames[gameId];
+        
         uint256 timeRemaining = 0;
         if (game.isActive && block.timestamp < game.startTime + BOT_GAME_MAX_DURATION) {
             timeRemaining = (game.startTime + BOT_GAME_MAX_DURATION) - block.timestamp;
         }
         bool botHasEjected = block.timestamp >= game.botEjectTime;
         bool gameTimedOut = block.timestamp >= game.startTime + BOT_GAME_MAX_DURATION;
+        
         return (
             game.id,
             game.player,
             game.startTime,
-            getCurrentBotMultiplier(gameId),
             game.entryFee,
             game.isActive,
             timeRemaining,

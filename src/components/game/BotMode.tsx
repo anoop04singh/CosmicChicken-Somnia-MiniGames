@@ -68,9 +68,9 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   const [displayTimeRemaining, setDisplayTimeRemaining] = useState(BOT_ROUND_DURATION);
   const [displayPayout, setDisplayPayout] = useState<bigint | null>(null);
 
-  const currentIsActive = botGameInfo ? botGameInfo[5] : false;
+  const currentIsActive = botGameInfo ? botGameInfo[4] : false;
   const startTime = botGameInfo ? botGameInfo[2] : 0n;
-  const gameEntryFee = botGameInfo ? botGameInfo[4] : 0n;
+  const gameEntryFee = botGameInfo ? botGameInfo[3] : 0n;
 
   useEffect(() => {
     if (prevIsActive.current === true && currentIsActive === false && !isGameOver) {

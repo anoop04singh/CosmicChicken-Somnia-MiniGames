@@ -600,47 +600,42 @@ export const contractAbi = [
 		"outputs": [
 			{
 				"internalType": "uint256",
-				"name": "id",
+				"name": "",
 				"type": "uint256"
 			},
 			{
 				"internalType": "address",
-				"name": "player",
+				"name": "",
 				"type": "address"
 			},
 			{
 				"internalType": "uint256",
-				"name": "startTime",
+				"name": "",
 				"type": "uint256"
 			},
 			{
 				"internalType": "uint256",
-				"name": "currentMultiplier",
-				"type": "uint256"
-			},
-			{
-				"internalType": "uint256",
-				"name": "gameEntryFee",
+				"name": "",
 				"type": "uint256"
 			},
 			{
 				"internalType": "bool",
-				"name": "isActive",
+				"name": "",
 				"type": "bool"
 			},
 			{
 				"internalType": "uint256",
-				"name": "timeRemaining",
+				"name": "",
 				"type": "uint256"
 			},
 			{
 				"internalType": "bool",
-				"name": "botHasEjected",
+				"name": "",
 				"type": "bool"
 			},
 			{
 				"internalType": "bool",
-				"name": "gameTimedOut",
+				"name": "",
 				"type": "bool"
 			}
 		],
