@@ -97,7 +97,7 @@ The smart contract is the **single source of truth**. It lives permanently on th
 *   **Enforcing Rules:** It validates every action. It checks if a player has paid the correct fee, if a round is active, etc.
 *   **Managing State:** It keeps track of the current round, who is playing, when they joined, and the game's start/end times.
 *   **Determining Winners:** The contract's code immutably decides the winner based on the rules.
-*   **Bot Logic:** For the Speed Round, the contract generates the bot's secret `ejectTime` and compares it against the player's transaction time.
+*   **Bot Logic:** The contract handles the entire lifecycle of the Speed Round, from generating the bot's secret eject time to determining the winner based on a timestamp comparison. See below for a detailed breakdown.
 *   **Payouts:** It handles the transfer of winnings directly to the player's wallet upon a successful cash-out or withdrawal.
 
 #### Key Contract Functions Used:
@@ -110,6 +110,28 @@ The smart contract is the **single source of truth**. It lives permanently on th
     *   `getBotGameInfo()`: Gets details for a specific bot game ID.
     *   `getBotGameResult()`: Fetches the outcome of a completed game.
     *   `entryFee()`: Reads the current entry fee for the game.
+
+#### On-Chain Bot Game Logic: A Step-by-Step
+The "Speed Round" against the bot is designed to be provably fair, with all critical logic happening transparently on the smart contract. Here’s how it works from the moment you click "Start":
+
+1.  **Starting the Game (`startBotGame`)**
+    *   When you send the transaction to start a game, the contract receives your entry fee.
+    *   It immediately generates a pseudo-random number using a combination of the current block's timestamp, your wallet address, and an internal game counter. This ensures a different outcome for every game.
+    *   This random number is used to determine the **secret `botEjectTime`**. This is a future timestamp, within the 30-second game window, at which the bot is scheduled to "eject".
+    *   This secret time is stored securely in the game's data on the blockchain. Neither you nor the frontend can see this value.
+
+2.  **The Race Against Time**
+    *   Your game is now active. The frontend starts displaying the increasing multiplier, which is calculated based on the time elapsed since the game started.
+    *   The smart contract is now waiting for one of two things to happen: either you eject, or the game timer runs out.
+
+3.  **Cashing Out (`ejectFromBotGame`)**
+    *   When you decide to cash out, you send a transaction to the `ejectFromBotGame` function.
+    *   The smart contract records the exact `block.timestamp` of when your transaction is confirmed on the blockchain. This is your official cash-out time.
+    *   The contract then performs the crucial check: **Is your cash-out timestamp *before* the bot's secret `botEjectTime`?**
+        *   **✅ If YES:** You win! The contract calculates your winnings based on the multiplier at your cash-out time, adds the funds to your withdrawable balance, and emits a `BotGameEnded` event declaring you the winner.
+        *   **❌ If NO:** You lose. The bot "ejected" first. The contract marks the game as lost and emits a `BotGameEnded` event with a payout of zero. This also happens if you try to cash out after the 30-second game duration has expired.
+
+This entire process is deterministic and auditable. The outcome is sealed the moment the game begins, and the winner is decided simply by comparing two timestamps on the blockchain.
 
 ### What Happens Off-Chain (The Frontend)
 
