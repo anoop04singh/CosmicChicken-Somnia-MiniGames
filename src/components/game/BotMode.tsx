@@ -24,15 +24,47 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   } | null>(null);
   const [currentGameId, setCurrentGameId] = useState<bigint | null>(null);
 
-  // --- WAGMI HOOKS for blockchain interaction ---
-  const { data: hash, writeContract, isPending: isWritePending, reset: resetWriteContract } = useWriteContract();
-  const { isLoading: isConfirming } = useWaitForTransactionReceipt({ 
-    hash,
+  // --- HOOKS FOR STARTING A GAME ---
+  const { 
+    data: startHash, 
+    writeContract: startGame, 
+    isPending: isStartPending,
+    reset: resetStartContract
+  } = useWriteContract();
+
+  const { isLoading: isStartConfirming } = useWaitForTransactionReceipt({
+    hash: startHash,
+    onSuccess: (data) => {
+      if (data.status === 'success') {
+        showSuccess("Transaction confirmed! Starting game...");
+        refetchActiveGameId(); // KEY FIX: Force a refetch to get the new game ID
+        onBalanceUpdate();
+        resetStartContract();
+      }
+    },
+    onError: (error) => {
+      showError(error.shortMessage || error.message);
+    }
+  });
+
+  // --- HOOKS FOR EJECTING FROM A GAME ---
+  const { 
+    data: ejectHash, 
+    writeContract: ejectGame, 
+    isPending: isEjectPending,
+    reset: resetEjectContract
+  } = useWriteContract();
+
+  const { isLoading: isEjectConfirming } = useWaitForTransactionReceipt({
+    hash: ejectHash,
     onSuccess: (data) => {
       if (data.status === 'success') {
         onBalanceUpdate();
-        resetWriteContract();
+        resetEjectContract();
       }
+    },
+    onError: (error) => {
+      showError(error.shortMessage || error.message);
     }
   });
 
@@ -63,20 +95,17 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     functionName: 'getBotGameInfo',
     args: [currentGameId as bigint],
     enabled: !!currentGameId && Number(currentGameId) > 0,
-    // Poll for game start confirmation to combat RPC lag.
-    // If we have a game ID but the contract says it's not active, poll every second.
-    // Once it becomes active, the polling will stop.
-    refetchInterval: (query) => (query.state.data && !query.state.data[4] ? 1000 : false),
+    refetchInterval: (query) => (currentGameId && (!query.state.data || !query.state.data[4]) ? 1000 : false),
   });
 
-  // --- EFFECT: Sync with on-chain state on page load/refresh ---
+  // --- EFFECT: Sync with on-chain state from direct reads or reloads ---
   useEffect(() => {
-    if (activeGameId && activeGameId > 0n && !currentGameId) {
+    if (activeGameId && activeGameId > 0n) {
       setCurrentGameId(activeGameId);
     }
-  }, [activeGameId, currentGameId]);
+  }, [activeGameId]);
 
-  // --- EVENT LISTENER: Game Started ---
+  // --- EVENT LISTENERS (for real-time updates) ---
   useWatchContractEvent({
     address: contractAddress,
     abi: contractAbi,
@@ -84,16 +113,14 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     onLogs(logs) {
       logs.forEach(log => {
         if (log.args.player === address) {
-          showSuccess("Your game has started!");
-          setCurrentGameId(log.args.gameId as bigint);
-          onBalanceUpdate();
-          resetWriteContract();
+          if (!currentGameId || log.args.gameId !== currentGameId) {
+            setCurrentGameId(log.args.gameId as bigint);
+          }
         }
       });
     },
   });
 
-  // --- EVENT LISTENER: Game Ended ---
   useWatchContractEvent({
     address: contractAddress,
     abi: contractAbi,
@@ -102,11 +129,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
       logs.forEach(log => {
         const { gameId, player, playerWon, payout, finalMultiplier } = log.args;
         if (player === address && gameId === currentGameId) {
-          if (playerWon) {
-            playSound('win');
-          } else {
-            playSound('explosion');
-          }
+          if (playerWon) playSound('win'); else playSound('explosion');
           setGameResult({ 
             playerWon: playerWon as boolean, 
             payout: payout as bigint, 
@@ -134,26 +157,20 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   const handleStart = () => {
     playSound('start');
     if (!entryFeeData) return;
-    resetWriteContract();
-    writeContract({
+    startGame({
       address: contractAddress,
       abi: contractAbi,
       functionName: 'startBotGame',
       value: entryFeeData as bigint,
     }, {
-      onSuccess: (txHash) => {
-        showSuccess(`Transaction sent: ${txHash.slice(0,10)}...`);
-      },
-      onError: (error) => {
-        showError(error.shortMessage || error.message);
-      }
+      onSuccess: (txHash) => showSuccess(`Transaction sent: ${txHash.slice(0,10)}...`),
+      onError: (error) => showError(error.shortMessage || error.message)
     });
   };
 
   const handleEject = () => {
     playSound('eject');
-    resetWriteContract();
-    writeContract({
+    ejectGame({
       address: contractAddress,
       abi: contractAbi,
       functionName: 'ejectFromBotGame',
@@ -211,22 +228,19 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
       setDisplayMultiplier(1.00);
       setDisplayTimeRemaining(BOT_ROUND_DURATION);
       setDisplayPayout(entryFeeData ?? null);
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     }
 
     return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
   }, [currentIsActive, startTime, gameEntryFee, maxMultiplierData, entryFeeData, playMultiplierSound]);
 
-  const isPending = isWritePending || isConfirming;
+  const isEjecting = isEjectPending || isEjectConfirming;
+  const isStarting = isStartPending || isStartConfirming;
   const formattedEntryFee = entryFeeData ? formatEther(entryFeeData as bigint) : '...';
-  const isButtonDisabled = isPending || isLoadingFee || !!currentGameId;
-  const buttonText = isPending ? (isConfirming ? 'Confirming...' : 'Sending...') : `Start Bot Game (${formattedEntryFee} STT)`;
+  const isButtonDisabled = isStarting || isLoadingFee || !!currentGameId;
+  const buttonText = isStarting ? (isStartConfirming ? 'Confirming...' : 'Sending...') : `Start Bot Game (${formattedEntryFee} STT)`;
 
   if (isGameOver && gameResult) {
     return <GameOverDisplay result={gameResult} onPlayAgain={handlePlayAgain} />;
@@ -266,13 +280,13 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
       <div className="game-status">
         <div className="action-buttons">
           {currentGameId && currentIsActive ? (
-            <Button onClick={handleEject} disabled={isPending} className="retro-btn-success action-btn cashout-btn">
-              {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            <Button onClick={handleEject} disabled={isEjecting} className="retro-btn-success action-btn cashout-btn">
+              {isEjecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Cash Out!
             </Button>
           ) : (
             <Button onClick={handleStart} disabled={isButtonDisabled} className="retro-btn-warning action-btn pulse">
-              {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {isStarting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               {buttonText}
             </Button>
           )}
