@@ -60,9 +60,19 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     abi: contractAbi,
     eventName: 'BotGameEnded',
     onLogs(logs) {
+      console.log("EVENT: 'BotGameEnded' logs received:", logs);
       logs.forEach(log => {
-        const { player, playerWon, payout, finalMultiplier } = log.args;
-        if (player && address && player.toLowerCase() === address.toLowerCase()) {
+        console.log("EVENT: Processing log:", log);
+        const { gameId, player, playerWon, payout, finalMultiplier } = log.args;
+        
+        console.log("EVENT: Log arguments:", { gameId, player, playerWon, payout, finalMultiplier });
+        console.log("EVENT: State values for comparison:", { userAddress: address, activeGameId: activeGameId });
+
+        const playerAddressMatch = player && address && (player as string).toLowerCase() === address.toLowerCase();
+        const gameIdMatch = activeGameId && gameId && BigInt(gameId as any) === BigInt(activeGameId as any);
+
+        if (playerAddressMatch && gameIdMatch) {
+          console.log("EVENT: Player address and game ID match! Setting game result.");
           setGameResult({ 
             playerWon: playerWon as boolean, 
             payout: payout as bigint, 
@@ -79,6 +89,15 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
           } else {
             showError("The bot ejected first! Better luck next time.");
           }
+        } else {
+            console.log("EVENT: Condition not met. Mismatched data:", { 
+                playerAddressMatch,
+                gameIdMatch,
+                eventPlayer: player, 
+                userAddress: address,
+                eventGameId: gameId,
+                activeGameId: activeGameId,
+            });
         }
       });
     },
@@ -94,6 +113,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
 
   useEffect(() => {
     if (prevIsActive.current === true && currentIsActive === false && !isGameOver) {
+      console.log("STATE: Game became inactive. Entering 'isFinalizing' state.");
       setIsFinalizing(true);
     }
     prevIsActive.current = currentIsActive;
@@ -103,7 +123,9 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     let timeout: NodeJS.Timeout;
     if (isFinalizing) {
       setShowResetButton(false); // Reset on new finalization
+      console.log("STATE: 'isFinalizing' is true. Setting 15s timeout for reset button.");
       timeout = setTimeout(() => {
+        console.log("STATE: 15s timeout elapsed. Showing reset button.");
         setShowResetButton(true);
       }, 15000); // Show reset button after 15 seconds
     } else {
@@ -148,6 +170,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   };
   
   const handlePlayAgain = () => {
+    console.log("ACTION: handlePlayAgain called. Resetting game state.");
     setIsGameOver(false);
     setGameResult(null);
     setIsFinalizing(false);
