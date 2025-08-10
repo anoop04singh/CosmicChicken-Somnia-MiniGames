@@ -1,6 +1,6 @@
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useWatchContractEvent } from 'wagmi';
 import { contractAddress, contractAbi } from '@/lib/abi';
-import { parseEther, formatEther } from 'viem';
+import { formatEther } from 'viem';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
@@ -23,11 +23,20 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     finalMultiplier: bigint;
   } | null>(null);
   const [currentGameId, setCurrentGameId] = useState<bigint | null>(null);
-  const [isStartingGame, setIsStartingGame] = useState(false);
 
   // --- WAGMI HOOKS for blockchain interaction ---
   const { data: hash, writeContract, isPending: isWritePending, reset: resetWriteContract } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
+  const { isLoading: isConfirming } = useWaitForTransactionReceipt({ 
+    hash,
+    onSuccess: (data) => {
+      if (data.status === 'success') {
+        // This primarily handles the EJECT transaction confirmation.
+        // The BotGameEnded event will manage the final state change.
+        onBalanceUpdate();
+        resetWriteContract();
+      }
+    }
+  });
 
   // --- WAGMI HOOKS for reading contract data ---
   const { data: entryFeeData, isLoading: isLoadingFee } = useReadContract({
@@ -42,6 +51,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     functionName: 'BOT_MAX_MULTIPLIER',
   });
 
+  // This is still useful for when the user reloads the page with an active game.
   const { data: activeGameId, refetch: refetchActiveGameId } = useReadContract({
     address: contractAddress,
     abi: contractAbi,
@@ -50,7 +60,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     enabled: !!address,
   });
 
-  const { data: botGameInfo } = useReadContract({
+  const { data: botGameInfo, refetch: refetchBotGameInfo } = useReadContract({
     address: contractAddress,
     abi: contractAbi,
     functionName: 'getBotGameInfo',
@@ -65,45 +75,22 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     }
   }, [activeGameId, currentGameId]);
 
-  // --- EFFECT: Get Game ID after transaction confirmation ---
-  useEffect(() => {
-    if (isConfirmed && isStartingGame) {
-      showSuccess("Transaction confirmed! Fetching your game...");
-      
-      // Use the reliable player-specific function to get the game ID
-      refetchActiveGameId().then(result => {
-        const newGameId = result.data;
-        if (newGameId && newGameId > 0n) {
-          setCurrentGameId(newGameId);
-        } else {
-          // It can take a moment for the contract state to be indexed by the RPC.
-          // We'll try one more time after a short delay.
-          setTimeout(() => {
-            refetchActiveGameId().then(retryResult => {
-              const retryGameId = retryResult.data;
-              if (retryGameId && retryGameId > 0n) {
-                setCurrentGameId(retryGameId);
-              } else {
-                showError("Could not find your active game. Please check your wallet or try again.");
-              }
-            })
-          }, 2500); // 2.5 second delay
+  // --- EVENT LISTENER: Game Started ---
+  useWatchContractEvent({
+    address: contractAddress,
+    abi: contractAbi,
+    eventName: 'BotGameStarted',
+    onLogs(logs) {
+      logs.forEach(log => {
+        if (log.args.player === address) {
+          showSuccess("Your game has started!");
+          setCurrentGameId(log.args.gameId as bigint);
+          onBalanceUpdate(); // The entry fee has been deducted.
+          resetWriteContract();
         }
-        setIsStartingGame(false);
-      }).catch(err => {
-        console.error("Error fetching active game ID:", err);
-        showError("There was an error fetching your game data.");
-        setIsStartingGame(false);
       });
-
-      onBalanceUpdate();
-      resetWriteContract();
-    } else if (isConfirmed) {
-        // This handles other confirmed transactions like ejecting
-        onBalanceUpdate();
-        resetWriteContract();
-    }
-  }, [isConfirmed, isStartingGame, refetchActiveGameId, onBalanceUpdate, resetWriteContract]);
+    },
+  });
 
   // --- EVENT LISTENER: Game Ended ---
   useWatchContractEvent({
@@ -126,7 +113,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
           });
           setIsGameOver(true);
           setCurrentGameId(null);
-          onGameWin();
+          onGameWin(); // This will refetch winnings
           resetMultiplierSound();
         }
       });
@@ -146,7 +133,6 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   const handleStart = () => {
     playSound('start');
     if (!entryFeeData) return;
-    setIsStartingGame(true);
     resetWriteContract();
     writeContract({
       address: contractAddress,
@@ -159,7 +145,6 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
       },
       onError: (error) => {
         showError(error.shortMessage || error.message);
-        setIsStartingGame(false);
       }
     });
   };
@@ -172,7 +157,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
       abi: contractAbi,
       functionName: 'ejectFromBotGame',
     }, {
-      onSuccess: (hash) => showSuccess(`Transaction sent: ${hash.slice(0,10)}...`),
+      onSuccess: (hash) => showSuccess(`Eject transaction sent: ${hash.slice(0,10)}...`),
       onError: (error) => showError(error.shortMessage || error.message)
     });
   };
@@ -189,6 +174,9 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   // --- EFFECT: Animation loop for the multiplier ---
   useEffect(() => {
     const loop = () => {
+      if (!startTime || startTime === 0n) {
+        return;
+      }
       const elapsed = (Date.now() / 1000) - Number(startTime);
       if (elapsed < 0) {
         animationFrameRef.current = requestAnimationFrame(loop);
@@ -214,6 +202,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     };
 
     if (currentIsActive && startTime > 0) {
+      refetchBotGameInfo();
       animationFrameRef.current = requestAnimationFrame(loop);
     } else {
       setDisplayMultiplier(1.00);
@@ -226,12 +215,12 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [currentIsActive, startTime, gameEntryFee, maxMultiplierData, entryFeeData, playMultiplierSound]);
+  }, [currentIsActive, startTime, gameEntryFee, maxMultiplierData, entryFeeData, playMultiplierSound, refetchBotGameInfo]);
 
   const isPending = isWritePending || isConfirming;
   const formattedEntryFee = entryFeeData ? formatEther(entryFeeData as bigint) : '...';
-  const isButtonDisabled = isPending || isLoadingFee || !!currentGameId || isStartingGame;
-  const buttonText = isStartingGame ? 'Starting...' : `Start Bot Game (${formattedEntryFee} STT)`;
+  const isButtonDisabled = isPending || isLoadingFee || !!currentGameId;
+  const buttonText = isPending ? (isConfirming ? 'Confirming...' : 'Sending...') : `Start Bot Game (${formattedEntryFee} STT)`;
 
   if (isGameOver && gameResult) {
     return <GameOverDisplay result={gameResult} onPlayAgain={handlePlayAgain} />;
