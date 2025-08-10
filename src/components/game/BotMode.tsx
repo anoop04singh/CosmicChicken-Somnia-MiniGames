@@ -12,8 +12,10 @@ const BOT_ROUND_DURATION = 30; // seconds
 const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBalanceUpdate: () => void; }) => {
   const { address } = useAccount();
   const animationFrameRef = useRef<number | null>(null);
+  const prevIsActive = useRef<boolean | undefined>();
 
   const [isGameOver, setIsGameOver] = useState(false);
+  const [isFinalizing, setIsFinalizing] = useState(false);
   const [gameResult, setGameResult] = useState<{
     playerWon: boolean;
     payout: bigint;
@@ -22,17 +24,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
 
   const { data: hash, writeContract, isPending: isWritePending, reset: resetWriteContract } = useWriteContract();
 
-  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ 
-    hash,
-    onSuccess: () => {
-      showSuccess("Transaction confirmed!");
-      // Give a moment for the event to arrive, then refetch as a backup.
-      setTimeout(() => {
-        refetchActiveGameId();
-        resetWriteContract();
-      }, 1000);
-    }
-  });
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
 
   const { data: entryFeeData, isLoading: isLoadingFee } = useReadContract({
     address: contractAddress,
@@ -70,6 +62,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
             finalMultiplier: finalMultiplier as bigint 
           });
           setIsGameOver(true);
+          setIsFinalizing(false);
           
           onGameWin();
           onBalanceUpdate();
@@ -91,6 +84,25 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   const currentIsActive = botGameInfo ? botGameInfo[5] : false;
   const startTime = botGameInfo ? botGameInfo[2] : 0n;
   const gameEntryFee = botGameInfo ? botGameInfo[4] : 0n;
+
+  useEffect(() => {
+    if (prevIsActive.current === true && currentIsActive === false && !isGameOver) {
+      setIsFinalizing(true);
+    }
+    prevIsActive.current = currentIsActive;
+  }, [currentIsActive, isGameOver]);
+
+  useEffect(() => {
+    if (isFinalizing) {
+      const timeout = setTimeout(() => {
+        if (isFinalizing) {
+          setIsGameOver(true);
+          setIsFinalizing(false);
+        }
+      }, 15000);
+      return () => clearTimeout(timeout);
+    }
+  }, [isFinalizing]);
 
   const handleStart = () => {
     if (!entryFeeData) return;
@@ -128,28 +140,20 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   const handlePlayAgain = () => {
     setIsGameOver(false);
     setGameResult(null);
+    setIsFinalizing(false);
+    prevIsActive.current = undefined;
     refetchActiveGameId();
   };
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (address && activeGameId && Number(activeGameId) > 0) {
-        refetchBotGameInfo().then(response => {
-          const gameInfo = response.data;
-          // Fallback: If polling shows game is inactive, and we are not waiting for a tx, and we have no result yet
-          if (gameInfo && !gameInfo[5] && !isConfirming && !isWritePending && !gameResult) {
-            setIsGameOver(true);
-          }
-        });
-      } else if (!activeGameId || Number(activeGameId) === 0) {
-        // If the game is over and we've navigated away, reset the state
-        if(isGameOver) {
-            handlePlayAgain();
-        }
-      }
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [address, activeGameId, refetchBotGameInfo, isConfirming, isWritePending, gameResult, isGameOver]);
+    if (isConfirmed) {
+      showSuccess("Transaction confirmed!");
+      refetchActiveGameId().then(() => {
+        refetchBotGameInfo();
+      });
+      resetWriteContract();
+    }
+  }, [isConfirmed, refetchActiveGameId, refetchBotGameInfo, resetWriteContract]);
 
   useEffect(() => {
     const loop = () => {
@@ -193,7 +197,6 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     if (gameResult) {
       return <GameOverDisplay result={gameResult} onPlayAgain={handlePlayAgain} />;
     }
-    // Fallback for when the event is missed but polling detects the game is over
     return (
       <div className="game-over-display">
         <h2 className="game-over-title">🤖 GAME OVER 🤖</h2>
@@ -201,6 +204,15 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
         <Button onClick={handlePlayAgain} className="retro-btn-primary action-btn mt-6">
           Play Again
         </Button>
+      </div>
+    );
+  }
+
+  if (isFinalizing) {
+    return (
+      <div className="transaction-status">
+        <Loader2 className="loading-spinner" />
+        <p className="status-text">Finalizing round, waiting for blockchain confirmation...</p>
       </div>
     );
   }
