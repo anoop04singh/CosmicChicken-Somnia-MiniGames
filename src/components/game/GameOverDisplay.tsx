@@ -20,7 +20,7 @@ const GameOverDisplay: React.FC<GameOverDisplayProps> = ({ result, onPlayAgain }
     <div className="game-over-display">
       <h2 className="game-over-title">{playerWon ? '🎉 YOU WON! 🎉' : '🤖 BOT WON 🤖'}</h2>
       {playerWon ? (
-        <p className="game-over-message">You cashed out before the bot! The winnings have been sent to your wallet.</p>
+        <p className="game-over-message">You cashed out! Your winnings have been added to your withdrawable balance.</p>
       ) : (
         <p className="game-over-message">The bot ejected first or the time ran out. Better luck next time!</p>
       )}

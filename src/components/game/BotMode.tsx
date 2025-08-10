@@ -12,6 +12,7 @@ const BOT_ROUND_DURATION = 30; // seconds
 const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBalanceUpdate: () => void; }) => {
   const { address } = useAccount();
   const animationFrameRef = useRef<number | null>(null);
+  const prevIsActive = useRef<boolean | undefined>();
 
   const [isGameOver, setIsGameOver] = useState(false);
   const [gameResult, setGameResult] = useState<{
@@ -61,7 +62,6 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
           });
           setIsGameOver(true);
           
-          // Refetch balances on both win and loss to ensure UI is in sync
           onGameWin();
           onBalanceUpdate();
 
@@ -79,9 +79,16 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   const [displayTimeRemaining, setDisplayTimeRemaining] = useState(BOT_ROUND_DURATION);
   const [displayPayout, setDisplayPayout] = useState<bigint | null>(null);
 
-  const isActive = botGameInfo ? botGameInfo[5] : false;
+  const currentIsActive = botGameInfo ? botGameInfo[5] : false;
   const startTime = botGameInfo ? botGameInfo[2] : 0n;
   const gameEntryFee = botGameInfo ? botGameInfo[4] : 0n;
+
+  useEffect(() => {
+    if (prevIsActive.current === true && currentIsActive === false) {
+      setIsGameOver(true);
+    }
+    prevIsActive.current = currentIsActive;
+  }, [currentIsActive]);
 
   const handleStart = () => {
     if (!entryFeeData) return;
@@ -93,7 +100,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     }, {
       onSuccess: (hash) => {
         showSuccess(`Transaction sent: ${hash.slice(0,10)}...`);
-        onBalanceUpdate(); // Immediately refetch wallet balance for instant feedback
+        onBalanceUpdate();
       },
       onError: (error) => {
         showError(error.shortMessage || error.message);
@@ -119,6 +126,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   const handlePlayAgain = () => {
     setIsGameOver(false);
     setGameResult(null);
+    prevIsActive.current = undefined;
     refetchActiveGameId();
   };
 
@@ -162,7 +170,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
       }
     };
 
-    if (isActive && startTime > 0) {
+    if (currentIsActive && startTime > 0) {
       animationFrameRef.current = requestAnimationFrame(loop);
     } else {
       setDisplayMultiplier(1.00);
@@ -175,13 +183,25 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [isActive, startTime, gameEntryFee]);
+  }, [currentIsActive, startTime, gameEntryFee]);
 
   const isPending = isWritePending || isConfirming;
   const formattedEntryFee = entryFeeData ? formatEther(entryFeeData as bigint) : '...';
 
-  if (isGameOver && gameResult) {
-    return <GameOverDisplay result={gameResult} onPlayAgain={handlePlayAgain} />;
+  if (isGameOver) {
+    if (gameResult) {
+      return <GameOverDisplay result={gameResult} onPlayAgain={handlePlayAgain} />;
+    }
+    // Fallback for when the event is missed but polling detects the game is over
+    return (
+      <div className="game-over-display">
+        <h2 className="game-over-title">🤖 GAME OVER 🤖</h2>
+        <p className="game-over-message">The round has finished. Your balances have been updated.</p>
+        <Button onClick={handlePlayAgain} className="retro-btn-primary action-btn mt-6">
+          Play Again
+        </Button>
+      </div>
+    );
   }
 
   return (
@@ -210,20 +230,20 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
           </div>
           <div className="bot-stat">
             <div className="bot-stat-label">Time Remaining</div>
-            <div className="bot-stat-value time">{isActive ? `${Math.floor(displayTimeRemaining)}s` : '--s'}</div>
+            <div className="bot-stat-value time">{currentIsActive ? `${Math.floor(displayTimeRemaining)}s` : '--s'}</div>
           </div>
         </div>
       </div>
 
       <div className="game-status">
         <div className="action-buttons">
-          {!isActive && (
+          {!currentIsActive && (
             <Button onClick={handleStart} disabled={isPending || !!activeGameId || isLoadingFee} className="retro-btn-warning action-btn pulse">
               {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Start Bot Game ({formattedEntryFee} STT)
             </Button>
           )}
-          {isActive && (
+          {currentIsActive && (
             <Button onClick={handleEject} disabled={isPending} className="retro-btn-success action-btn cashout-btn">
               {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Cash Out!
