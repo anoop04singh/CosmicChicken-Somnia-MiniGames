@@ -1,5 +1,5 @@
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useWatchContractEvent } from 'wagmi';
-import { readContract } from '@wagmi/core';
+import { readContract } from 'wagmi/actions';
 import { config } from '@/lib/wagmi';
 import { contractAddress, contractAbi } from '@/lib/abi';
 import { formatEther } from 'viem';
@@ -69,32 +69,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     reset: resetEjectContract
   } = useWriteContract();
 
-  const fetchAndSetGameResult = async (gameId: bigint) => {
-    try {
-      console.log(`[BotMode] Proactively fetching result for game ID: ${gameId}`);
-      const result = await readContract(config, {
-        address: contractAddress,
-        abi: contractAbi,
-        functionName: 'getBotGameResult',
-        args: [gameId],
-      });
-  
-      const [playerWon, payout, finalMultiplier] = result;
-      console.log('[BotMode] Fetched game result:', { playerWon, payout, finalMultiplier });
-  
-      if (playerWon) playSound('win'); else playSound('explosion');
-      setGameResult({ playerWon, payout, finalMultiplier });
-      setIsGameOver(true);
-      setCurrentGameId(null);
-      onGameWin();
-      resetMultiplierSound();
-    } catch (err) {
-      console.error('[BotMode] Error fetching game result proactively:', err);
-      showError("Could not fetch game result. It will update shortly.");
-    }
-  };
-
-  useWaitForTransactionReceipt({
+  const { isLoading: isEjectConfirming } = useWaitForTransactionReceipt({
     hash: ejectHash,
     onSuccess: (data) => {
       if (data.status === 'success') {
@@ -109,6 +84,29 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
       showError(error.shortMessage || error.message);
     }
   });
+
+  const fetchAndSetGameResult = async (gameId: bigint) => {
+    try {
+      const result = await readContract(config, {
+        address: contractAddress,
+        abi: contractAbi,
+        functionName: 'getBotGameResult',
+        args: [gameId],
+      });
+  
+      const [playerWon, payout, finalMultiplier] = result;
+  
+      if (playerWon) playSound('win'); else playSound('explosion');
+      setGameResult({ playerWon, payout, finalMultiplier });
+      setIsGameOver(true);
+      setCurrentGameId(null);
+      onGameWin();
+      resetMultiplierSound();
+    } catch (err) {
+      console.error('[BotMode] Error fetching game result proactively:', err);
+      showError("Could not fetch game result. It will update shortly.");
+    }
+  };
 
   // --- WAGMI HOOKS for reading contract data ---
   const { data: entryFeeData, isLoading: isLoadingFee } = useReadContract({
