@@ -12,7 +12,6 @@ const BOT_ROUND_DURATION = 30; // seconds
 const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBalanceUpdate: () => void; }) => {
   const { address } = useAccount();
   const animationFrameRef = useRef<number | null>(null);
-  const prevIsActive = useRef<boolean | undefined>();
 
   const [isGameOver, setIsGameOver] = useState(false);
   const [gameResult, setGameResult] = useState<{
@@ -23,7 +22,17 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
 
   const { data: hash, writeContract, isPending: isWritePending, reset: resetWriteContract } = useWriteContract();
 
-  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ 
+    hash,
+    onSuccess: () => {
+      showSuccess("Transaction confirmed!");
+      // Give a moment for the event to arrive, then refetch as a backup.
+      setTimeout(() => {
+        refetchActiveGameId();
+        resetWriteContract();
+      }, 1000);
+    }
+  });
 
   const { data: entryFeeData, isLoading: isLoadingFee } = useReadContract({
     address: contractAddress,
@@ -66,7 +75,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
           onBalanceUpdate();
 
           if (playerWon) {
-            showSuccess(`You won! Payout: ${formatEther(payout as bigint)} STT. Added to your withdrawable winnings.`);
+            showSuccess(`You won! Payout: ${formatEther(payout as bigint)} STT.`);
           } else {
             showError("The bot ejected first! Better luck next time.");
           }
@@ -82,13 +91,6 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   const currentIsActive = botGameInfo ? botGameInfo[5] : false;
   const startTime = botGameInfo ? botGameInfo[2] : 0n;
   const gameEntryFee = botGameInfo ? botGameInfo[4] : 0n;
-
-  useEffect(() => {
-    if (prevIsActive.current === true && currentIsActive === false) {
-      setIsGameOver(true);
-    }
-    prevIsActive.current = currentIsActive;
-  }, [currentIsActive]);
 
   const handleStart = () => {
     if (!entryFeeData) return;
@@ -126,29 +128,28 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   const handlePlayAgain = () => {
     setIsGameOver(false);
     setGameResult(null);
-    prevIsActive.current = undefined;
     refetchActiveGameId();
   };
 
   useEffect(() => {
     const interval = setInterval(() => {
-      if (address) {
-        refetchActiveGameId();
-        if (activeGameId && Number(activeGameId) > 0) {
-          refetchBotGameInfo();
+      if (address && activeGameId && Number(activeGameId) > 0) {
+        refetchBotGameInfo().then(response => {
+          const gameInfo = response.data;
+          // Fallback: If polling shows game is inactive, and we are not waiting for a tx, and we have no result yet
+          if (gameInfo && !gameInfo[5] && !isConfirming && !isWritePending && !gameResult) {
+            setIsGameOver(true);
+          }
+        });
+      } else if (!activeGameId || Number(activeGameId) === 0) {
+        // If the game is over and we've navigated away, reset the state
+        if(isGameOver) {
+            handlePlayAgain();
         }
       }
     }, 3000);
     return () => clearInterval(interval);
-  }, [address, activeGameId, refetchActiveGameId, refetchBotGameInfo]);
-
-  useEffect(() => {
-    if (isConfirmed) {
-      showSuccess("Transaction confirmed!");
-      refetchActiveGameId();
-      resetWriteContract();
-    }
-  }, [isConfirmed, refetchActiveGameId, resetWriteContract]);
+  }, [address, activeGameId, refetchBotGameInfo, isConfirming, isWritePending, gameResult, isGameOver]);
 
   useEffect(() => {
     const loop = () => {
