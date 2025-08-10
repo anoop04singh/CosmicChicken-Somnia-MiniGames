@@ -1,17 +1,17 @@
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useWatchContractEvent } from 'wagmi';
 import { contractAddress, contractAbi } from '@/lib/abi';
-import { parseEther, formatEther } from 'viem';
+import { formatEther } from 'viem';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { showSuccess } from '@/utils/toast';
-import { useSound } from '@/contexts/SoundContext';
+import { useAudio } from '@/contexts/AudioContext';
 
 const MultiplayerMode = ({ onGameWin }: { onGameWin: () => void; }) => {
   const { address } = useAccount();
   const { data: hash, writeContract, isPending, reset } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
-  const { playSound } = useSound();
+  const { playSound } = useAudio();
 
   const { data: roundInfo, refetch, isLoading: isLoadingRound } = useReadContract({
     address: contractAddress,
@@ -85,7 +85,7 @@ const MultiplayerMode = ({ onGameWin }: { onGameWin: () => void; }) => {
   }, [isConfirmed, refetch, refetchPlayerStatus, reset]);
 
   const handleJoin = () => {
-    playSound('join');
+    playSound('start');
     if (!entryFee) return;
     writeContract({
       address: contractAddress,

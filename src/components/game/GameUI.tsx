@@ -10,7 +10,7 @@ import { formatEther } from 'viem';
 import { contractAddress, contractAbi } from '@/lib/abi';
 import { showError, showSuccess } from '@/utils/toast';
 import SoundControl from './SoundControl';
-import { useSound } from '@/contexts/SoundContext';
+import { useAudio } from '@/contexts/AudioContext';
 import { Separator } from '@/components/ui/separator';
 
 type GameMode = 'multiplayer' | 'bot';
@@ -20,7 +20,7 @@ const GameUI = () => {
   const { address } = useAccount();
   const { disconnect } = useDisconnect();
   const { data: balance, refetch: refetchWalletBalance } = useBalance({ address });
-  const { playSound } = useSound();
+  const { playSound } = useAudio();
 
   const { data: ownerAddress } = useReadContract({
     address: contractAddress,

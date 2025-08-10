@@ -1,11 +1,11 @@
 import { useConnect } from 'wagmi';
 import RetroWindow from './RetroWindow';
 import { Button } from '@/components/ui/button';
-import { useSound } from '@/contexts/SoundContext';
+import { useAudio } from '@/contexts/AudioContext';
 
 const ConnectWallet = () => {
   const { connectors, connect } = useConnect();
-  const { playSound } = useSound();
+  const { playSound } = useAudio();
 
   const handleConnect = (connector: any) => {
     playSound('click');

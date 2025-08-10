@@ -5,11 +5,11 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import { Providers } from "./components/Providers";
-import { SoundProvider } from "./contexts/SoundContext";
+import { AudioProvider } from "./contexts/AudioContext";
 
 const App = () => (
   <Providers>
-    <SoundProvider>
+    <AudioProvider>
       <TooltipProvider>
         <Toaster />
         <Sonner />
@@ -20,7 +20,7 @@ const App = () => (
           </Routes>
         </BrowserRouter>
       </TooltipProvider>
-    </SoundProvider>
+    </AudioProvider>
   </Providers>
 );
 

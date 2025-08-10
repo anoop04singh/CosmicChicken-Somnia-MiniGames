@@ -1,8 +1,8 @@
-import { useSound } from '@/contexts/SoundContext';
+import { useAudio } from '@/contexts/AudioContext';
 import { Volume2, VolumeX } from 'lucide-react';
 
 const SoundControl = () => {
-  const { isMuted, toggleMute } = useSound();
+  const { isMuted, toggleMute } = useAudio();
 
   return (
     <button onClick={toggleMute} className="sound-btn">

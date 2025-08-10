@@ -6,14 +6,14 @@ import { Loader2 } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 import { showError, showSuccess } from '@/utils/toast';
 import GameOverDisplay from './GameOverDisplay';
-import { useSound } from '@/contexts/SoundContext';
+import { useAudio } from '@/contexts/AudioContext';
 
 const BOT_ROUND_DURATION = 30; // seconds
 
 const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBalanceUpdate: () => void; }) => {
   const { address } = useAccount();
   const animationFrameRef = useRef<number | null>(null);
-  const { playSound } = useSound();
+  const { playSound, playMultiplierSound, resetMultiplierSound } = useAudio();
 
   // --- STATE MANAGEMENT ---
   const [isGameOver, setIsGameOver] = useState(false);
@@ -119,6 +119,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
           setIsGameOver(true);
           setCurrentGameId(null);
           onGameWin();
+          resetMultiplierSound();
         }
       });
     },
@@ -169,10 +170,12 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   };
   
   const handlePlayAgain = () => {
+    playSound('click');
     setIsGameOver(false);
     setGameResult(null);
     setCurrentGameId(null);
     refetchActiveGameId();
+    resetMultiplierSound();
   };
 
   // --- EFFECT: Animation loop for the multiplier ---
@@ -187,6 +190,8 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
       const maxMultiplier = maxMultiplierData ? Number(maxMultiplierData) / 100 : Infinity;
       let newMultiplier = 1 + (elapsed / 5);
       if (newMultiplier > maxMultiplier) newMultiplier = maxMultiplier;
+
+      playMultiplierSound(newMultiplier);
 
       const newTimeRemaining = Math.max(0, BOT_ROUND_DURATION - elapsed);
       setDisplayMultiplier(newMultiplier);
@@ -213,7 +218,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [currentIsActive, startTime, gameEntryFee, maxMultiplierData, entryFeeData]);
+  }, [currentIsActive, startTime, gameEntryFee, maxMultiplierData, entryFeeData, playMultiplierSound]);
 
   const isPending = isWritePending || isConfirming;
   const formattedEntryFee = entryFeeData ? formatEther(entryFeeData as bigint) : '...';

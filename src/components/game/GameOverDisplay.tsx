@@ -2,7 +2,7 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { formatEther } from 'viem';
 import { cn } from '@/lib/utils';
-import { useSound } from '@/contexts/SoundContext';
+import { useAudio } from '@/contexts/AudioContext';
 
 interface GameOverDisplayProps {
   result: {
@@ -14,7 +14,7 @@ interface GameOverDisplayProps {
 }
 
 const GameOverDisplay: React.FC<GameOverDisplayProps> = ({ result, onPlayAgain }) => {
-  const { playSound } = useSound();
+  const { playSound } = useAudio();
   const { playerWon, payout, finalMultiplier } = result;
   const formattedMultiplier = (Number(finalMultiplier) / 100).toFixed(2);
   const formattedPayout = formatEther(payout);
