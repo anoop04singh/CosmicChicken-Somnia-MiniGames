@@ -241,7 +241,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
 
   // --- EFFECT: Animation loop for the multiplier ---
   useEffect(() => {
-    if (!gameStartTime || !gameDuration || !currentGameId) {
+    if (!gameStartTime || !gameDuration || !currentGameId || isGameOver) {
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
@@ -272,10 +272,13 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
         setDisplayPayout(payout);
       }
   
-      if (timeRemaining > 0 && !!currentGameId) {
+      if (timeRemaining > 0) {
         animationFrameRef.current = requestAnimationFrame(loop);
       } else {
-         setDisplayMultiplier(maxMultiplier);
+        setDisplayMultiplier(maxMultiplier);
+        if (currentGameId && !isGameOver) {
+          fetchAndSetGameResult(currentGameId);
+        }
       }
     };
   
@@ -286,7 +289,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [gameStartTime, gameDuration, currentGameId, maxMultiplierData, entryFeeData, playMultiplierSound]);
+  }, [gameStartTime, gameDuration, currentGameId, maxMultiplierData, entryFeeData, playMultiplierSound, isGameOver]);
 
   const isEjecting = isEjectPending || isEjectConfirming;
   const isStarting = isStartPending;
