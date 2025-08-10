@@ -1,4 +1,10 @@
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useWatchContractEvent } from 'wagmi';
+import { 
+  useAccount, 
+  useReadContract, 
+  useWriteContract, 
+  useWaitForTransactionReceipt, 
+  useWatchContractEvent 
+} from 'wagmi';
 import { contractAddress, contractAbi } from '@/lib/abi';
 import { formatEther } from 'viem';
 import { Button } from '@/components/ui/button';
@@ -17,92 +23,31 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
 
   // --- STATE MANAGEMENT ---
   const [isGameOver, setIsGameOver] = useState(false);
-  const [gameResult, setGameResult] = useState<{
-    playerWon: boolean;
-    payout: bigint;
-    finalMultiplier: bigint;
-  } | null>(null);
+  const [gameResult, setGameResult] = useState<{ playerWon: boolean; payout: bigint; finalMultiplier: bigint; } | null>(null);
   const [currentGameId, setCurrentGameId] = useState<bigint | null>(null);
 
   console.log('[BotMode] Render. Current Game ID:', currentGameId?.toString());
 
   // --- HOOKS FOR STARTING A GAME ---
-  const { 
-    data: startHash, 
-    writeContract: startGame, 
-    isPending: isStartPending,
-    reset: resetStartContract
-  } = useWriteContract();
+  const { data: startHash, writeContract: startGame, isPending: isStartPending, reset: resetStartContract } = useWriteContract();
 
   const { data: activeGameId, refetch: refetchActiveGameId } = useReadContract({
     address: contractAddress,
     abi: contractAbi,
-    functionName: 'playerActiveBotGame', // ✅ Corrected function name from ABI
+    functionName: 'playerActiveBotGame', // ✅ fixed function name
     args: [address as `0x${string}`],
     enabled: !!address,
   });
 
-  useWaitForTransactionReceipt({
-    hash: startHash,
-    onSettled: async (data, error) => {
-      console.log('[BotMode] Start transaction settled. Data:', data, 'Error:', error);
-      if (error) {
-        console.error('[BotMode] Transaction failed onsettled:', error);
-        showError(error.shortMessage || 'Transaction failed.');
-        resetStartContract();
-        return;
-      }
-      if (data && data.status === 'success') {
-        console.log('[BotMode] Transaction successful. Receipt:', data);
-        showSuccess("Transaction confirmed! Waiting for game to start...");
-        onBalanceUpdate();
-        
-        // Fallback polling in case event is missed
-        console.log('[BotMode] Actively polling for new game ID as a fallback...');
-        for (let i = 0; i < 5; i++) {
-          if (currentGameId) break; // Stop polling if event listener already set the ID
-          const { data: newGameId } = await refetchActiveGameId();
-          if (newGameId && newGameId > 0n && newGameId !== activeGameId) {
-            console.log('[BotMode] Polling found new game ID:', newGameId.toString());
-            setCurrentGameId(newGameId);
-            break;
-          }
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-        resetStartContract();
-
-      } else if (data && data.status === 'reverted') {
-        console.error('[BotMode] Transaction reverted. Receipt:', data);
-        showError('Transaction failed. The contract reverted the transaction. You may already be in a game.');
-        resetStartContract();
-      }
-    },
+  // Fetch Bot Game Info
+  const { data: botGameInfo, refetch: refetchBotGameInfo } = useReadContract({
+    address: contractAddress,
+    abi: contractAbi,
+    functionName: 'getBotGameInfo',
+    args: [currentGameId as bigint],
+    enabled: !!currentGameId && Number(currentGameId) > 0,
   });
 
-  // --- HOOKS FOR EJECTING FROM A GAME ---
-  const { 
-    data: ejectHash, 
-    writeContract: ejectGame, 
-    isPending: isEjectPending,
-    reset: resetEjectContract
-  } = useWriteContract();
-
-  const { isLoading: isEjectConfirming } = useWaitForTransactionReceipt({
-    hash: ejectHash,
-    onSuccess: (data) => {
-      console.log('[BotMode] Eject transaction confirmed:', data);
-      if (data.status === 'success') {
-        onBalanceUpdate();
-        resetEjectContract();
-      }
-    },
-    onError: (error) => {
-      console.error('[BotMode] Error waiting for eject transaction receipt:', error);
-      showError(error.shortMessage || error.message);
-    }
-  });
-
-  // --- WAGMI HOOKS for reading contract data ---
   const { data: entryFeeData, isLoading: isLoadingFee } = useReadContract({
     address: contractAddress,
     abi: contractAbi,
@@ -115,52 +60,91 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     functionName: 'BOT_MAX_MULTIPLIER',
   });
 
-  const { data: botGameInfo } = useReadContract({
-    address: contractAddress,
-    abi: contractAbi,
-    functionName: 'getBotGameInfo',
-    args: [currentGameId as bigint],
-    enabled: !!currentGameId && Number(currentGameId) > 0,
+  // --- Wait for transaction receipt after starting a game ---
+  useWaitForTransactionReceipt({
+    hash: startHash,
+    onSettled: async (data, error) => {
+      console.log('[BotMode] Start transaction settled. Data:', data, 'Error:', error);
+      if (error) {
+        console.error('[BotMode] Transaction failed:', error);
+        showError(error.shortMessage || 'Transaction failed.');
+        resetStartContract();
+        return;
+      }
+      if (data?.status === 'success') {
+        showSuccess("Transaction confirmed! Fetching game details...");
+        onBalanceUpdate();
+
+        // Poll for new game ID
+        for (let i = 0; i < 5; i++) {
+          const { data: newGameId } = await refetchActiveGameId();
+          if (newGameId && newGameId > 0n) {
+            setCurrentGameId(newGameId);
+            refetchBotGameInfo();
+            resetStartContract();
+            return;
+          }
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        showError("Could not sync with the new game. Please refresh.");
+        resetStartContract();
+      } else if (data?.status === 'reverted') {
+        showError('Transaction failed. You may already be in a game.');
+        resetStartContract();
+      }
+    },
   });
 
-  // --- EFFECT: Sync with on-chain state on page load/refresh ---
+  // --- HOOKS FOR EJECTING FROM A GAME ---
+  const { data: ejectHash, writeContract: ejectGame, isPending: isEjectPending, reset: resetEjectContract } = useWriteContract();
+
+  const { isLoading: isEjectConfirming } = useWaitForTransactionReceipt({
+    hash: ejectHash,
+    onSuccess: () => {
+      onBalanceUpdate();
+      resetEjectContract();
+    },
+    onError: (error) => {
+      showError(error.shortMessage || error.message);
+    }
+  });
+
+  // --- Sync local state with on-chain state ---
   useEffect(() => {
     if (activeGameId && activeGameId > 0n && !currentGameId) {
-      console.log('[BotMode] Syncing local game ID from activeGameId on load:', activeGameId.toString());
       setCurrentGameId(activeGameId);
     }
   }, [activeGameId, currentGameId]);
 
-  // --- EVENT LISTENERS ---
+  // --- EVENT LISTENER: Game Started ---
   useWatchContractEvent({
     address: contractAddress,
     abi: contractAbi,
     eventName: 'BotGameStarted',
     onLogs(logs) {
       logs.forEach(log => {
-        const args = log.args as { gameId?: bigint; player?: `0x${string}` };
-        if (args.player === address) {
-          console.log('[BotMode] BotGameStarted event received, setting game ID:', args.gameId?.toString());
-          setCurrentGameId(args.gameId as bigint);
+        if (log.args.player === address) {
+          console.log('[BotMode] BotGameStarted event:', log.args);
+          setCurrentGameId(log.args.gameId);
+          refetchBotGameInfo();
         }
       });
     },
   });
 
+  // --- EVENT LISTENER: Game Ended ---
   useWatchContractEvent({
     address: contractAddress,
     abi: contractAbi,
     eventName: 'BotGameEnded',
     onLogs(logs) {
       logs.forEach(log => {
-        const args = log.args as { gameId?: bigint; player?: `0x${string}`; playerWon?: boolean; payout?: bigint; finalMultiplier?: bigint; };
-        if (args.player === address && args.gameId === currentGameId) {
-          console.log('[BotMode] BotGameEnded event matches current game. Processing result.');
-          if (args.playerWon) playSound('win'); else playSound('explosion');
-          setGameResult({ 
-            playerWon: args.playerWon as boolean, 
-            payout: args.payout as bigint, 
-            finalMultiplier: args.finalMultiplier as bigint 
+        if (log.args.player === address && log.args.gameId?.toString() === currentGameId?.toString()) {
+          console.log('[BotMode] BotGameEnded event:', log.args);
+          setGameResult({
+            playerWon: log.args.playerWon as boolean,
+            payout: log.args.payout as bigint,
+            finalMultiplier: log.args.finalMultiplier as bigint
           });
           setIsGameOver(true);
           setCurrentGameId(null);
@@ -171,7 +155,25 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     },
   });
 
-  // --- UI STATE DERIVATION ---
+  // --- EVENT LISTENER: Player Ejected ---
+  useWatchContractEvent({
+    address: contractAddress,
+    abi: contractAbi,
+    eventName: 'PlayerEjected',
+    onLogs(logs) {
+      logs.forEach(log => {
+        if (log.args.player === address) {
+          console.log('[BotMode] PlayerEjected event:', log.args);
+          setIsGameOver(true);
+          setGameResult(prev => prev || { playerWon: true, payout: BigInt(0), finalMultiplier: BigInt(0) });
+          setCurrentGameId(null);
+          onGameWin();
+        }
+      });
+    },
+  });
+
+  // --- UI STATE ---
   const [displayMultiplier, setDisplayMultiplier] = useState(1.00);
   const [displayTimeRemaining, setDisplayTimeRemaining] = useState(BOT_ROUND_DURATION);
   const [displayPayout, setDisplayPayout] = useState<bigint | null>(null);
@@ -180,67 +182,27 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   const startTime = botGameInfo ? botGameInfo[2] : 0n;
   const gameEntryFee = botGameInfo ? botGameInfo[3] : 0n;
 
-  // --- HANDLERS ---
-  const handleStart = () => {
-    console.log('[BotMode] handleStart called.');
-    playSound('start');
-    if (!entryFeeData) return;
-    startGame({
-      address: contractAddress,
-      abi: contractAbi,
-      functionName: 'startBotGame',
-      value: entryFeeData as bigint,
-    }, {
-      onSuccess: (txHash) => showSuccess(`Transaction sent: ${txHash.slice(0,10)}...`),
-      onError: (error) => showError(error.shortMessage || error.message)
-    });
-  };
-
-  const handleEject = () => {
-    console.log('[BotMode] handleEject called for game ID:', currentGameId?.toString());
-    playSound('eject');
-    ejectGame({
-      address: contractAddress,
-      abi: contractAbi,
-      functionName: 'ejectFromBotGame',
-    }, {
-      onSuccess: (hash) => showSuccess(`Eject transaction sent: ${hash.slice(0,10)}...`),
-      onError: (error) => showError(error.shortMessage || error.message)
-    });
-  };
-  
-  const handlePlayAgain = () => {
-    console.log('[BotMode] handlePlayAgain called. Resetting state.');
-    playSound('click');
-    setIsGameOver(false);
-    setGameResult(null);
-    setCurrentGameId(null);
-    refetchActiveGameId();
-    resetMultiplierSound();
-  };
-
-  // --- EFFECT: Animation loop for the multiplier ---
+  // --- Animation loop for multiplier ---
   useEffect(() => {
+    if (currentIsActive && startTime > 0) {
+      console.log('[BotMode] Animation loop started for game ID:', currentGameId?.toString());
+    }
+
     const loop = () => {
       if (!startTime || startTime === 0n || !currentIsActive) {
         if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
         return;
       }
       const elapsed = (Date.now() / 1000) - Number(startTime);
-      if (elapsed < 0) {
-        animationFrameRef.current = requestAnimationFrame(loop);
-        return;
-      }
-
       const maxMultiplier = maxMultiplierData ? Number(maxMultiplierData) / 100 : Infinity;
       let newMultiplier = 1 + (elapsed / 5);
       if (newMultiplier > maxMultiplier) newMultiplier = maxMultiplier;
 
       playMultiplierSound(newMultiplier);
-
       const newTimeRemaining = Math.max(0, BOT_ROUND_DURATION - elapsed);
       setDisplayMultiplier(newMultiplier);
       setDisplayTimeRemaining(newTimeRemaining);
+
       if (gameEntryFee > 0n) {
         const payout = (gameEntryFee * BigInt(Math.floor(newMultiplier * 10000))) / 10000n;
         setDisplayPayout(payout);
@@ -262,7 +224,43 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [currentIsActive, startTime, gameEntryFee, maxMultiplierData, entryFeeData, playMultiplierSound]);
+  }, [currentIsActive, startTime, gameEntryFee, maxMultiplierData, entryFeeData, playMultiplierSound, currentGameId]);
+
+  // --- Handlers ---
+  const handleStart = () => {
+    if (!entryFeeData) return;
+    playSound('start');
+    startGame({
+      address: contractAddress,
+      abi: contractAbi,
+      functionName: 'startBotGame',
+      value: entryFeeData as bigint,
+    }, {
+      onSuccess: (txHash) => showSuccess(`Transaction sent: ${txHash.slice(0,10)}...`),
+      onError: (error) => showError(error.shortMessage || error.message)
+    });
+  };
+
+  const handleEject = () => {
+    playSound('eject');
+    ejectGame({
+      address: contractAddress,
+      abi: contractAbi,
+      functionName: 'ejectFromBotGame',
+    }, {
+      onSuccess: (hash) => showSuccess(`Eject transaction sent: ${hash.slice(0,10)}...`),
+      onError: (error) => showError(error.shortMessage || error.message)
+    });
+  };
+
+  const handlePlayAgain = () => {
+    playSound('click');
+    setIsGameOver(false);
+    setGameResult(null);
+    setCurrentGameId(null);
+    refetchActiveGameId();
+    resetMultiplierSound();
+  };
 
   const isEjecting = isEjectPending || isEjectConfirming;
   const isStarting = isStartPending;
