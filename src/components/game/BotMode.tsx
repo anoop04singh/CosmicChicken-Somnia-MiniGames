@@ -20,10 +20,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     finalMultiplier: bigint;
   } | null>(null);
 
-  const { data: hash, writeContract, isPending: isWritePending, reset: resetWriteContract } = useWriteContract({
-    onSuccess: (hash) => { showSuccess(`Transaction sent: ${hash.slice(0,10)}...`); },
-    onError: (error) => { showError(error.shortMessage || error.message); }
-  });
+  const { data: hash, writeContract, isPending: isWritePending, reset: resetWriteContract } = useWriteContract();
 
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
 
@@ -64,10 +61,12 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
           });
           setIsGameOver(true);
           
+          // Refetch balances on both win and loss to ensure UI is in sync
+          onGameWin();
+          onBalanceUpdate();
+
           if (playerWon) {
             showSuccess(`You won! Payout: ${formatEther(payout as bigint)} STT. Added to your withdrawable winnings.`);
-            onGameWin();
-            onBalanceUpdate();
           } else {
             showError("The bot ejected first! Better luck next time.");
           }
@@ -91,6 +90,14 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
       abi: contractAbi,
       functionName: 'startBotGame',
       value: entryFeeData as bigint,
+    }, {
+      onSuccess: (hash) => {
+        showSuccess(`Transaction sent: ${hash.slice(0,10)}...`);
+        onBalanceUpdate(); // Immediately refetch wallet balance for instant feedback
+      },
+      onError: (error) => {
+        showError(error.shortMessage || error.message);
+      }
     });
   };
 
@@ -99,6 +106,13 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
       address: contractAddress,
       abi: contractAbi,
       functionName: 'ejectFromBotGame',
+    }, {
+      onSuccess: (hash) => {
+        showSuccess(`Transaction sent: ${hash.slice(0,10)}...`);
+      },
+      onError: (error) => {
+        showError(error.shortMessage || error.message);
+      }
     });
   };
   

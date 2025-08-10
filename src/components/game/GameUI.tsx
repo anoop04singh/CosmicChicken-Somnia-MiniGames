@@ -79,7 +79,7 @@ const GameUI = () => {
       if (address) {
         refetchPlayerWinnings();
       }
-    }, 5000);
+    }, 3000); // Polling every 3 seconds for better responsiveness
     return () => clearInterval(interval);
   }, [refetchRoundInfo, refetchCurrentRoundId, refetchPlayerWinnings, address]);
 
