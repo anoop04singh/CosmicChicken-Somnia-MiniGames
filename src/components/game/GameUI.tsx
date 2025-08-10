@@ -11,6 +11,7 @@ import { contractAddress, contractAbi } from '@/lib/abi';
 import { showError, showSuccess } from '@/utils/toast';
 import SoundControl from './SoundControl';
 import { useSound } from '@/contexts/SoundContext';
+import { Separator } from '@/components/ui/separator';
 
 type GameMode = 'multiplayer' | 'bot';
 
@@ -170,7 +171,10 @@ const GameUI = () => {
         </div>
         
         {isOwner && (
-          <OwnerPanel />
+          <>
+            <Separator className="my-2 bg-gray-500" />
+            <OwnerPanel />
+          </>
         )}
       </RetroWindow>
     </div>

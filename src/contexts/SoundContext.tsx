@@ -47,6 +47,12 @@ export const SoundProvider = ({ children }: { children: ReactNode }) => {
   }, [isMuted]);
 
   const toggleMute = () => {
+    // Play click sound manually regardless of mute state, but only when unmuting
+    if (isMuted && audioRefs.current['click']) {
+        audioRefs.current['click'].currentTime = 0;
+        audioRefs.current['click'].play().catch(e => console.error(`Error playing sound click:`, e));
+    }
+
     setIsMuted(prev => {
       const newMutedState = !prev;
       if (newMutedState) {
