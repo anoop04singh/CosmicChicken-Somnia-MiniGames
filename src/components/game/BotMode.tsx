@@ -32,13 +32,33 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     reset: resetStartContract
   } = useWriteContract();
 
+  const { data: activeGameId, refetch: refetchActiveGameId } = useReadContract({
+    address: contractAddress,
+    abi: contractAbi,
+    functionName: 'getPlayerActiveBotGame',
+    args: [address as `0x${string}`],
+    enabled: !!address,
+  });
+
   const { isLoading: isStartConfirming } = useWaitForTransactionReceipt({
     hash: startHash,
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       if (data.status === 'success') {
-        showSuccess("Transaction confirmed! Starting game...");
-        refetchActiveGameId(); // KEY FIX: Force a refetch to get the new game ID
+        showSuccess("Transaction confirmed! Fetching game details...");
         onBalanceUpdate();
+        
+        // Actively poll for the new game ID to combat RPC lag.
+        for (let i = 0; i < 5; i++) { // Retry up to 5 times
+          const { data: newGameId } = await refetchActiveGameId();
+          if (newGameId && newGameId > 0n && newGameId !== activeGameId) {
+            setCurrentGameId(newGameId);
+            resetStartContract();
+            return; // Success, exit the loop
+          }
+          await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s before retrying
+        }
+        
+        showError("Could not sync with the new game. Please refresh the page.");
         resetStartContract();
       }
     },
@@ -59,6 +79,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     hash: ejectHash,
     onSuccess: (data) => {
       if (data.status === 'success') {
+        // The BotGameEnded event will handle the final state change.
         onBalanceUpdate();
         resetEjectContract();
       }
@@ -81,46 +102,22 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     functionName: 'BOT_MAX_MULTIPLIER',
   });
 
-  const { data: activeGameId, refetch: refetchActiveGameId } = useReadContract({
-    address: contractAddress,
-    abi: contractAbi,
-    functionName: 'getPlayerActiveBotGame',
-    args: [address as `0x${string}`],
-    enabled: !!address,
-  });
-
   const { data: botGameInfo } = useReadContract({
     address: contractAddress,
     abi: contractAbi,
     functionName: 'getBotGameInfo',
     args: [currentGameId as bigint],
     enabled: !!currentGameId && Number(currentGameId) > 0,
-    refetchInterval: (query) => (currentGameId && (!query.state.data || !query.state.data[4]) ? 1000 : false),
   });
 
-  // --- EFFECT: Sync with on-chain state from direct reads or reloads ---
+  // --- EFFECT: Sync with on-chain state on page load/refresh ---
   useEffect(() => {
-    if (activeGameId && activeGameId > 0n) {
+    if (activeGameId && activeGameId > 0n && !currentGameId) {
       setCurrentGameId(activeGameId);
     }
-  }, [activeGameId]);
+  }, [activeGameId, currentGameId]);
 
-  // --- EVENT LISTENERS (for real-time updates) ---
-  useWatchContractEvent({
-    address: contractAddress,
-    abi: contractAbi,
-    eventName: 'BotGameStarted',
-    onLogs(logs) {
-      logs.forEach(log => {
-        if (log.args.player === address) {
-          if (!currentGameId || log.args.gameId !== currentGameId) {
-            setCurrentGameId(log.args.gameId as bigint);
-          }
-        }
-      });
-    },
-  });
-
+  // --- EVENT LISTENER: Game Ended ---
   useWatchContractEvent({
     address: contractAddress,
     abi: contractAbi,
