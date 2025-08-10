@@ -18,6 +18,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
 
   // --- STATE MANAGEMENT ---
   const [isGameOver, setIsGameOver] = useState(false);
+  const [isAwaitingEject, setIsAwaitingEject] = useState(false);
   const [gameResult, setGameResult] = useState<{
     playerWon: boolean;
     payout: bigint;
@@ -34,6 +35,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     setCurrentGameId(null);
     setGameResult(null);
     setIsGameOver(false);
+    setIsAwaitingEject(false);
     setGameStartTime(null);
     setGameDuration(null);
     resetMultiplierSound();
@@ -93,11 +95,17 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   
       if (playerWon) playSound('win'); else playSound('explosion');
       setGameResult({ playerWon, payout, finalMultiplier });
+      setIsAwaitingEject(false);
       setIsGameOver(true);
       onGameWin();
-    } catch (err) {
-      console.error('[BotMode] Error fetching game result proactively:', err);
-      showError("Could not fetch game result. It will update shortly.");
+    } catch (err: any) {
+      if (err.shortMessage && err.shortMessage.includes('Game has not ended yet')) {
+        setIsAwaitingEject(true);
+        showError("Timer ended! Eject to finalize the round and see your result.");
+      } else {
+        console.error('[BotMode] Error fetching game result:', err);
+        showError("Could not fetch game result. It will update shortly.");
+      }
     }
   };
 
@@ -294,9 +302,9 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   const isEjecting = isEjectPending || isEjectConfirming;
   const isStarting = isStartPending;
   const formattedEntryFee = entryFeeData ? formatEther(entryFeeData as bigint) : '...';
-  const isButtonDisabled = isStarting || isLoadingFee || !!currentGameId;
+  const isButtonDisabled = isStarting || isLoadingFee || !!currentGameId || isAwaitingEject;
   const buttonText = isStarting ? 'Sending...' : `Start Bot Game (${formattedEntryFee} STT)`;
-  const currentIsActive = !!currentGameId && !isGameOver;
+  const currentIsActive = !!currentGameId && !isGameOver && !isAwaitingEject;
 
   if (isGameOver && gameResult) {
     return <GameOverDisplay result={gameResult} onPlayAgain={handlePlayAgain} />;
@@ -328,17 +336,27 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
           </div>
           <div className="bot-stat">
             <div className="bot-stat-label">Time Remaining</div>
-            <div className="bot-stat-value time">{currentIsActive ? `${Math.floor(displayTimeRemaining)}s` : '--s'}</div>
+            <div className="bot-stat-value time">{currentIsActive || isAwaitingEject ? `${Math.floor(displayTimeRemaining)}s` : '--s'}</div>
           </div>
         </div>
       </div>
 
       <div className="game-status">
+        {isAwaitingEject && (
+            <div className="status-message danger mb-4">
+            Round ended. You must eject to finalize the result!
+            </div>
+        )}
         <div className="action-buttons">
           {currentIsActive ? (
             <Button onClick={handleEject} disabled={isEjecting} className="retro-btn-success action-btn cashout-btn">
               {isEjecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               {isEjectConfirming ? 'Confirming...' : 'Cash Out!'}
+            </Button>
+          ) : isAwaitingEject ? (
+            <Button onClick={handleEject} disabled={isEjecting} className="retro-btn-danger action-btn eject-btn">
+                {isEjecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                {isEjectConfirming ? 'Confirming...' : 'Eject to Finalize'}
             </Button>
           ) : (
             <Button onClick={handleStart} disabled={isButtonDisabled} className="retro-btn-warning action-btn pulse">
