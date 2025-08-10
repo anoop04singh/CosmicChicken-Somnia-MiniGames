@@ -22,6 +22,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     payout: bigint;
     finalMultiplier: bigint;
   } | null>(null);
+  const [currentGameId, setCurrentGameId] = useState<bigint | null>(null);
 
   const { data: hash, writeContract, isPending: isWritePending, reset: resetWriteContract } = useWriteContract();
 
@@ -55,6 +56,13 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     enabled: !!activeGameId && Number(activeGameId) > 0,
   });
 
+  useEffect(() => {
+    if (activeGameId && activeGameId > 0n && activeGameId !== currentGameId) {
+      console.log(`STATE: New active game detected. Game ID: ${activeGameId}. Storing it.`);
+      setCurrentGameId(activeGameId);
+    }
+  }, [activeGameId, currentGameId]);
+
   useWatchContractEvent({
     address: contractAddress,
     abi: contractAbi,
@@ -62,14 +70,13 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     onLogs(logs) {
       console.log("EVENT: 'BotGameEnded' logs received:", logs);
       logs.forEach(log => {
-        console.log("EVENT: Processing log:", log);
         const { gameId, player, playerWon, payout, finalMultiplier } = log.args;
         
-        console.log("EVENT: Log arguments:", { gameId, player, playerWon, payout, finalMultiplier });
-        console.log("EVENT: State values for comparison:", { userAddress: address, activeGameId: activeGameId });
+        console.log("EVENT: Processing log with args:", { gameId, player, playerWon, payout, finalMultiplier });
+        console.log("EVENT: State values for comparison:", { userAddress: address, currentGameId: currentGameId });
 
         const playerAddressMatch = player && address && (player as string).toLowerCase() === address.toLowerCase();
-        const gameIdMatch = activeGameId && gameId && BigInt(gameId as any) === BigInt(activeGameId as any);
+        const gameIdMatch = currentGameId && gameId && BigInt(gameId as any) === currentGameId;
 
         if (playerAddressMatch && gameIdMatch) {
           console.log("EVENT: Player address and game ID match! Setting game result.");
@@ -80,6 +87,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
           });
           setIsGameOver(true);
           setIsFinalizing(false);
+          setCurrentGameId(null);
           
           onGameWin();
           onBalanceUpdate();
@@ -96,7 +104,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
                 eventPlayer: player, 
                 userAddress: address,
                 eventGameId: gameId,
-                activeGameId: activeGameId,
+                stateGameId: currentGameId,
             });
         }
       });
@@ -122,12 +130,12 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   useEffect(() => {
     let timeout: NodeJS.Timeout;
     if (isFinalizing) {
-      setShowResetButton(false); // Reset on new finalization
+      setShowResetButton(false);
       console.log("STATE: 'isFinalizing' is true. Setting 15s timeout for reset button.");
       timeout = setTimeout(() => {
         console.log("STATE: 15s timeout elapsed. Showing reset button.");
         setShowResetButton(true);
-      }, 15000); // Show reset button after 15 seconds
+      }, 15000);
     } else {
       setShowResetButton(false);
     }
@@ -135,6 +143,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   }, [isFinalizing]);
 
   const handleStart = () => {
+    console.log("ACTION: handleStart called.");
     if (!entryFeeData) return;
     resetWriteContract();
     writeContract({
@@ -144,16 +153,19 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
       value: entryFeeData as bigint,
     }, {
       onSuccess: (hash) => {
+        console.log(`TX: Start transaction sent. Hash: ${hash}`);
         showSuccess(`Transaction sent: ${hash.slice(0,10)}...`);
         onBalanceUpdate();
       },
       onError: (error) => {
+        console.error("TX_ERROR: Start transaction failed to send.", error);
         showError(error.shortMessage || error.message);
       }
     });
   };
 
   const handleEject = () => {
+    console.log("ACTION: handleEject called.");
     resetWriteContract();
     writeContract({
       address: contractAddress,
@@ -161,9 +173,11 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
       functionName: 'ejectFromBotGame',
     }, {
       onSuccess: (hash) => {
+        console.log(`TX: Eject transaction sent. Hash: ${hash}`);
         showSuccess(`Transaction sent: ${hash.slice(0,10)}...`);
       },
       onError: (error) => {
+        console.error("TX_ERROR: Eject transaction failed to send.", error);
         showError(error.shortMessage || error.message);
       }
     });
@@ -174,14 +188,17 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     setIsGameOver(false);
     setGameResult(null);
     setIsFinalizing(false);
+    setCurrentGameId(null);
     prevIsActive.current = undefined;
     refetchActiveGameId();
   };
 
   useEffect(() => {
     if (isConfirmed) {
+      console.log("TX_CONFIRMED: Transaction has been confirmed by the network.");
       showSuccess("Transaction confirmed!");
       refetchActiveGameId().then(() => {
+        console.log("DATA_FETCH: Refetched active game ID after confirmation.");
         refetchBotGameInfo();
       });
       resetWriteContract();
