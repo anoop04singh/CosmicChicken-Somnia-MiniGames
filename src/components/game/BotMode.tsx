@@ -39,6 +39,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     functionName: 'BOT_MAX_MULTIPLIER',
   });
 
+  // This hook is for re-syncing if the user refreshes the page
   const { data: activeGameId, refetch: refetchActiveGameId } = useReadContract({
     address: contractAddress,
     abi: contractAbi,
@@ -66,20 +67,33 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   console.log("Active Game ID from hook:", activeGameId?.toString());
   console.log("Bot Game Info from hook:", botGameInfo);
 
-  // --- EFFECT: Sync local currentGameId with on-chain activeGameId ---
+  // --- EFFECT: Sync with on-chain state on page load/refresh ---
   useEffect(() => {
-    console.log(`SYNC: activeGameId from chain: ${activeGameId}, local currentGameId: ${currentGameId?.toString()}`);
-    if (activeGameId && activeGameId > 0n) {
+    if (activeGameId && activeGameId > 0n && !currentGameId) {
+      console.log(`SYNC: Found active game ${activeGameId} on load, setting local state.`);
       setCurrentGameId(activeGameId);
-    } else {
-      // Only set to null if we are not in a game over transition
-      if (!isGameOver) {
-        setCurrentGameId(null);
-      }
     }
-  }, [activeGameId, isGameOver]);
+  }, [activeGameId, currentGameId]);
 
-  // --- EFFECT: Listen for the game end event from the contract ---
+  // --- EVENT LISTENER: Game Started ---
+  useWatchContractEvent({
+    address: contractAddress,
+    abi: contractAbi,
+    eventName: 'BotGameStarted',
+    onLogs(logs) {
+      logs.forEach(log => {
+        const { gameId, player } = log.args;
+        if (player === address) {
+          console.log(`EVENT (BotGameStarted): Game ${gameId} started for current player.`);
+          setCurrentGameId(gameId as bigint);
+          setIsGameOver(false); // Ensure we are not in a game over state
+          setGameResult(null);
+        }
+      });
+    },
+  });
+
+  // --- EVENT LISTENER: Game Ended ---
   useWatchContractEvent({
     address: contractAddress,
     abi: contractAbi,
@@ -103,21 +117,6 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
       });
     },
   });
-
-  // --- EFFECT: Poll for game info as a backup ---
-  useEffect(() => {
-    if (currentGameId) {
-      console.log(`POLL: Starting polling for game ID ${currentGameId}.`);
-      const interval = setInterval(() => {
-        console.log(`POLL: Refetching bot game info for ${currentGameId}`);
-        refetchBotGameInfo();
-      }, 2000);
-      return () => {
-        console.log(`POLL: Stopping polling for game ID ${currentGameId}.`);
-        clearInterval(interval);
-      };
-    }
-  }, [currentGameId, refetchBotGameInfo]);
 
   // --- UI STATE DERIVATION ---
   const [displayMultiplier, setDisplayMultiplier] = useState(1.00);
@@ -161,19 +160,19 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     console.log("ACTION: handlePlayAgain called. Resetting state.");
     setIsGameOver(false);
     setGameResult(null);
-    refetchActiveGameId();
+    setCurrentGameId(null);
+    refetchActiveGameId(); // Check if a game is somehow still active
   };
 
-  // --- EFFECT: Handle transaction confirmation ---
+  // --- EFFECT: Handle transaction confirmation (less critical now, but good for feedback) ---
   useEffect(() => {
     if (isConfirmed) {
-      console.log("CONFIRMED: Transaction confirmed. Refetching active game ID.");
+      console.log("CONFIRMED: Transaction confirmed. Event listeners will handle state changes.");
       showSuccess("Transaction confirmed!");
-      refetchActiveGameId();
       onBalanceUpdate();
       resetWriteContract();
     }
-  }, [isConfirmed, refetchActiveGameId, onBalanceUpdate, resetWriteContract]);
+  }, [isConfirmed, onBalanceUpdate, resetWriteContract]);
 
   // --- EFFECT: Animation loop for the multiplier ---
   useEffect(() => {
