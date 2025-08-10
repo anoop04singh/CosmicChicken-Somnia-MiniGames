@@ -13,7 +13,6 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   const { address } = useAccount();
   const animationFrameRef = useRef<number | null>(null);
 
-  // --- State for Game Over UI ---
   const [isGameOver, setIsGameOver] = useState(false);
   const [gameResult, setGameResult] = useState<{
     playerWon: boolean;
@@ -21,13 +20,18 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     finalMultiplier: bigint;
   } | null>(null);
 
-  // --- Blockchain Data Hooks ---
   const { data: hash, writeContract, isPending: isWritePending, reset: resetWriteContract } = useWriteContract({
     onSuccess: (hash) => { showSuccess(`Transaction sent: ${hash.slice(0,10)}...`); },
     onError: (error) => { showError(error.shortMessage || error.message); }
   });
 
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
+
+  const { data: entryFeeData, isLoading: isLoadingFee } = useReadContract({
+    address: contractAddress,
+    abi: contractAbi,
+    functionName: 'entryFee',
+  });
 
   const { data: activeGameId, refetch: refetchActiveGameId } = useReadContract({
     address: contractAddress,
@@ -61,7 +65,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
           setIsGameOver(true);
           
           if (playerWon) {
-            showSuccess(`You won! Payout: ${formatEther(payout as bigint)} STT.`);
+            showSuccess(`You won! Payout: ${formatEther(payout as bigint)} STT. Added to your withdrawable winnings.`);
             onGameWin();
             onBalanceUpdate();
           } else {
@@ -72,23 +76,21 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     },
   });
 
-  // --- State for UI Animation ---
   const [displayMultiplier, setDisplayMultiplier] = useState(1.00);
   const [displayTimeRemaining, setDisplayTimeRemaining] = useState(BOT_ROUND_DURATION);
   const [displayPayout, setDisplayPayout] = useState<bigint | null>(null);
 
-  // --- Derived State from Blockchain Data ---
   const isActive = botGameInfo ? botGameInfo[5] : false;
   const startTime = botGameInfo ? botGameInfo[2] : 0n;
-  const entryFee = botGameInfo ? botGameInfo[4] : 0n;
+  const gameEntryFee = botGameInfo ? botGameInfo[4] : 0n;
 
-  // --- Handlers for Contract Writes ---
   const handleStart = () => {
+    if (!entryFeeData) return;
     writeContract({
       address: contractAddress,
       abi: contractAbi,
       functionName: 'startBotGame',
-      value: parseEther('0.01'),
+      value: entryFeeData as bigint,
     });
   };
 
@@ -106,7 +108,6 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     refetchActiveGameId();
   };
 
-  // --- Effects ---
   useEffect(() => {
     const interval = setInterval(() => {
       if (address) {
@@ -138,8 +139,8 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
       const newTimeRemaining = Math.max(0, BOT_ROUND_DURATION - elapsed);
       setDisplayMultiplier(newMultiplier);
       setDisplayTimeRemaining(newTimeRemaining);
-      if (entryFee > 0n) {
-        const payout = (entryFee * BigInt(Math.floor(newMultiplier * 10000))) / 10000n;
+      if (gameEntryFee > 0n) {
+        const payout = (gameEntryFee * BigInt(Math.floor(newMultiplier * 10000))) / 10000n;
         setDisplayPayout(payout);
       }
       if (newTimeRemaining > 0) {
@@ -152,7 +153,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     } else {
       setDisplayMultiplier(1.00);
       setDisplayTimeRemaining(BOT_ROUND_DURATION);
-      setDisplayPayout(entryFee > 0n ? entryFee : null);
+      setDisplayPayout(gameEntryFee > 0n ? gameEntryFee : null);
     }
 
     return () => {
@@ -160,9 +161,10 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [isActive, startTime, entryFee]);
+  }, [isActive, startTime, gameEntryFee]);
 
   const isPending = isWritePending || isConfirming;
+  const formattedEntryFee = entryFeeData ? formatEther(entryFeeData as bigint) : '...';
 
   if (isGameOver && gameResult) {
     return <GameOverDisplay result={gameResult} onPlayAgain={handlePlayAgain} />;
@@ -173,7 +175,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
       <div className="rules-panel casino-rules">
         <h3 className="panel-title">Speed Round Rules</h3>
         <div className="rules-list">
-          <p className="rule-item">Pay 0.01 STT to start a 30-second round against the bot.</p>
+          <p className="rule-item">Pay {formattedEntryFee} STT to start a 30-second round against the bot.</p>
           <p className="rule-item">A prize multiplier increases rapidly.</p>
           <p className="rule-item">The bot will eject at a random time. Cash out before it does to win!</p>
           <p className="rule-item">If the bot ejects first or time runs out, you lose.</p>
@@ -202,9 +204,9 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
       <div className="game-status">
         <div className="action-buttons">
           {!isActive && (
-            <Button onClick={handleStart} disabled={isPending || !!activeGameId} className="retro-btn-warning action-btn pulse">
+            <Button onClick={handleStart} disabled={isPending || !!activeGameId || isLoadingFee} className="retro-btn-warning action-btn pulse">
               {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Start Bot Game (0.01 STT)
+              Start Bot Game ({formattedEntryFee} STT)
             </Button>
           )}
           {isActive && (

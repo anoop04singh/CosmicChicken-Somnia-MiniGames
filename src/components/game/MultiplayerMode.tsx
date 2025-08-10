@@ -17,6 +17,12 @@ const MultiplayerMode = ({ onGameWin }: { onGameWin: () => void; }) => {
     functionName: 'getCurrentRoundInfo',
   });
 
+  const { data: entryFee, isLoading: isLoadingFee } = useReadContract({
+    address: contractAddress,
+    abi: contractAbi,
+    functionName: 'entryFee',
+  });
+
   const { data: isPlayerInRound, refetch: refetchPlayerStatus } = useReadContract({
     address: contractAddress,
     abi: contractAbi,
@@ -76,11 +82,12 @@ const MultiplayerMode = ({ onGameWin }: { onGameWin: () => void; }) => {
   }, [isConfirmed, refetch, refetchPlayerStatus, reset]);
 
   const handleJoin = () => {
+    if (!entryFee) return;
     writeContract({
       address: contractAddress,
       abi: contractAbi,
       functionName: 'joinRound',
-      value: parseEther('0.01'),
+      value: entryFee as bigint,
     });
   };
 
@@ -94,13 +101,14 @@ const MultiplayerMode = ({ onGameWin }: { onGameWin: () => void; }) => {
 
   const prizePool = roundInfo && roundInfo[3] ? formatEther(roundInfo[3]) : '0';
   const activePlayers = roundInfo && roundInfo[4] ? Number(roundInfo[4]) : 0;
+  const formattedEntryFee = entryFee ? formatEther(entryFee as bigint) : '...';
 
   return (
     <>
       <div className="rules-panel">
         <h3 className="panel-title">Multiplayer Royale Rules</h3>
         <div className="rules-list">
-          <p className="rule-item">Pay 0.01 STT to join the round.</p>
+          <p className="rule-item">Pay {formattedEntryFee} STT to join the round.</p>
           <p className="rule-item">Each new player resets the timer.</p>
           <p className="rule-item">Eject anytime to leave, but forfeit your fee.</p>
           <p className="rule-item">The last player to join before the timer runs out wins the entire prize pool!</p>
@@ -124,9 +132,9 @@ const MultiplayerMode = ({ onGameWin }: { onGameWin: () => void; }) => {
         </div>
         <div className="action-buttons">
           {!isPlayerInRound ? (
-            <Button onClick={handleJoin} disabled={isPending || isConfirming} className="retro-btn-success action-btn pulse">
+            <Button onClick={handleJoin} disabled={isPending || isConfirming || isLoadingFee} className="retro-btn-success action-btn pulse">
               {isPending || isConfirming ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Join Round (0.01 STT)
+              Join Round ({formattedEntryFee} STT)
             </Button>
           ) : (
             <Button onClick={handleEject} disabled={isPending || isConfirming} className="retro-btn-danger action-btn eject-btn">
