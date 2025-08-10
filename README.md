@@ -21,7 +21,7 @@ Welcome to the official documentation for Cosmic Chicken, a decentralized game o
     *   [Prerequisites](#prerequisites)
     *   [Installation Steps](#installation-steps)
     *   [Running the Game](#running-the-game)
-7.  [Important Considerations](#important-considerations)
+7.  [Important Considerations & Constraints](#important-considerations--constraints)
 8.  [Owner & Admin Controls](#owner--admin-controls)
 
 ---
@@ -53,6 +53,7 @@ This is a game of patience and strategy where you compete against other players.
     3.  Players can "Eject" at any time, but they forfeit their entry fee.
     4.  When the timer finally runs out, the **last player who joined** wins the entire prize pool.
 *   **Strategy:** Do you join early and hope others keep resetting the timer? Or do you wait until the last second to snipe the win, risking that someone else will join right after you?
+*   **Constraint:** If you are the last person to join and no one else enters the round, the timer will count down to zero, and you will win the entire prize pool.
 
 ### Speed Round (vs. Bot)
 
@@ -63,11 +64,12 @@ This is a fast-paced, single-player game of nerve against an automated opponent.
     1.  The player pays a fixed entry fee to start a 30-second round.
     2.  A prize multiplier starts at 1.00x and increases rapidly over time.
     3.  The smart contract pre-determines a secret, random time within the round when the bot will "eject".
-    4.  The player must click "Cash Out" to win. The payout is the entry fee multiplied by the current multiplier.
+    4.  The player must click "Cash Out!" to win. The payout is the entry fee multiplied by the current multiplier.
     5.  **You lose if:**
         *   You cash out *after* the bot's secret eject time.
         *   The 30-second round timer expires before you cash out.
 *   **Strategy:** How long can you hold your nerve? The longer you wait, the higher the potential reward, but the greater the risk that the bot will eject first.
+*   **Constraint:** If you do not "Cash Out" (eject) during the round, you will automatically lose your entry fee when either the bot ejects or the 30-second timer expires, whichever comes first.
 
 ## Gameplay Walkthrough
 
@@ -125,11 +127,25 @@ The smart contract (`CosmicChickenV2.sol`) is the **single source of truth**. It
 *   **Bot Logic:** For the Speed Round, the contract generates the bot's secret `ejectTime` and compares it against the player's transaction time.
 *   **Payouts:** It handles the transfer of winnings directly to the player's wallet upon a successful cash-out or withdrawal.
 
+#### Key Contract Functions Used:
+*   **Write Functions (State-Changing):**
+    *   `joinRound()`: Pays the entry fee to enter the multiplayer game.
+    *   `ejectFromRound()`: Forfeits the fee to leave the multiplayer game.
+    *   `startBotGame()`: Pays the entry fee to start a new speed round.
+    *   `ejectFromBotGame()`: Cashes out of the speed round to claim winnings.
+    *   `withdrawWinnings()`: Transfers your accumulated winnings from the contract to your wallet.
+*   **Read Functions (Data-Fetching):**
+    *   `getCurrentRoundInfo()`: Gets live data for the multiplayer mode (prize pool, players, timer).
+    *   `getPlayerActiveBotGame()`: Checks if the current user has a bot game in progress.
+    *   `getBotGameInfo()`: Gets details for a specific bot game ID.
+    *   `botGameCounter()`: Returns the total number of bot games played, used to get the ID of a newly created game.
+    *   `entryFee()`: Reads the current entry fee for both game modes.
+
 ### What Happens Off-Chain (The Frontend)
 
 The React application running in your browser is the **presentation layer**. It provides a user-friendly interface to interact with the on-chain contract.
-*   **Reading Data:** It constantly reads data from the smart contract to display things like the prize pool, player count, and timers.
-*   **Sending Transactions:** When you click a button like "Join Round" or "Cash Out", the frontend constructs a transaction and sends it to your wallet for approval.
+*   **Reading Data:** It uses `wagmi` hooks to constantly read data from the smart contract (e.g., `useReadContract`) to display things like the prize pool, player count, and timers.
+*   **Sending Transactions:** When you click a button like "Join Round" or "Cash Out", the frontend constructs a transaction and sends it to your wallet for approval using the `useWriteContract` hook.
 *   **Listening for Events:** The frontend listens for events (like `RoundFinished` or `BotGameEnded`) emitted by the contract to know when to update the UI, for example, by showing the "Game Over" screen.
 *   **Animations:** Visual elements like the increasing multiplier and countdown timers are handled by the frontend for a smooth user experience. They are animated in the UI while the definitive state is fetched from the blockchain.
 
@@ -169,15 +185,20 @@ The React application running in your browser is the **presentation layer**. It 
     ```
 *   Open your browser and navigate to `http://localhost:8080` (or the URL provided in your terminal).
 
-## Important Considerations
+## Important Considerations & Constraints
 
-*   **Gas Fees:** Every transaction that changes the state of the blockchain (joining, ejecting, cashing out, withdrawing) requires a gas fee paid in STT.
-*   **Transaction Latency:** Blockchain transactions are not instant. They take a few seconds to be confirmed. This is especially important in the Speed Round, as your "Cash Out" transaction needs to be mined before the bot's eject time.
+**Please read this section carefully to understand the risks and mechanics of playing a Web3 game.**
+
+*   **Gas Fees:** Every transaction that changes the state of the blockchain (joining, ejecting, cashing out, withdrawing) requires a gas fee paid in STT. This is a fee you pay to the network, not to the game itself.
+*   **Transaction Latency:** Blockchain transactions are not instant. They take a few seconds to be confirmed by the network. This has critical implications for gameplay:
+    *   **Multiplayer Royale:** When you join a round, there's a delay before your transaction is confirmed. Someone else might send a transaction after you, but have it confirmed *before* you, making them the "last player" instead.
+    *   **Speed Round (vs. Bot):** This is the most important constraint. Your "Cash Out!" transaction must be sent *and confirmed* by the network before the bot's secret eject time. **Clicking at the last possible second is extremely risky.** Due to network latency, your transaction may not be included in a block in time, causing you to lose. You must approve the transaction in your wallet quickly.
 *   **Security:** Always be mindful of the transactions you are approving in your wallet. This project is for demonstration on a testnet, but these principles apply to all Web3 applications.
 *   **Testnet Funds:** The STT tokens used in this game are on a testnet and have **no real-world monetary value**.
+*   **Browser State:** If you close your browser or refresh the page mid-game, your position is safe. The smart contract holds the true state of the game. When you reconnect your wallet, the frontend will re-sync and show you the current status.
 
 ## Owner & Admin Controls
 
-The smart contract includes special functions that can only be called by the contract's owner:
-*   **Withdraw Contract Balance:** The owner can withdraw any funds held by the contract that are not allocated to player winnings (e.g., from the house edge).
-*   **Update Game Parameters:** The owner can update the `entryFee`, `roundDuration`, and the `botEjectMin/MaxDuration` to adjust game balance and difficulty.
+The smart contract includes special functions that can only be called by the contract's owner. These are accessible via the UI if you are connected with the owner's wallet address.
+*   **Withdraw Contract Balance:** The owner can withdraw any funds held by the contract that are not allocated to player winnings.
+*   **Update Game Parameters:** The owner can update the `entryFee`, `roundDuration` (for multiplayer), and the `botEjectMin/MaxDuration` to adjust game balance and difficulty.
