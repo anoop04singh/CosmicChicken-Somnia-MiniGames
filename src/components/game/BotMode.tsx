@@ -16,6 +16,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
 
   const [isGameOver, setIsGameOver] = useState(false);
   const [isFinalizing, setIsFinalizing] = useState(false);
+  const [showResetButton, setShowResetButton] = useState(false);
   const [gameResult, setGameResult] = useState<{
     playerWon: boolean;
     payout: bigint;
@@ -99,20 +100,21 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   }, [currentIsActive, isGameOver]);
 
   useEffect(() => {
+    let timeout: NodeJS.Timeout;
     if (isFinalizing) {
-      const timeout = setTimeout(() => {
-        if (isFinalizing) {
-          setIsGameOver(true);
-          setIsFinalizing(false);
-        }
-      }, 15000);
-      return () => clearTimeout(timeout);
+      setShowResetButton(false); // Reset on new finalization
+      timeout = setTimeout(() => {
+        setShowResetButton(true);
+      }, 15000); // Show reset button after 15 seconds
+    } else {
+      setShowResetButton(false);
     }
+    return () => clearTimeout(timeout);
   }, [isFinalizing]);
 
   const handleStart = () => {
     if (!entryFeeData) return;
-    resetWriteContract(); // Reset state before new write
+    resetWriteContract();
     writeContract({
       address: contractAddress,
       abi: contractAbi,
@@ -130,7 +132,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   };
 
   const handleEject = () => {
-    resetWriteContract(); // Reset state before new write
+    resetWriteContract();
     writeContract({
       address: contractAddress,
       abi: contractAbi,
@@ -207,26 +209,25 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   const isPending = isWritePending || isConfirming;
   const formattedEntryFee = entryFeeData ? formatEther(entryFeeData as bigint) : '...';
 
-  if (isGameOver) {
-    if (gameResult) {
-      return <GameOverDisplay result={gameResult} onPlayAgain={handlePlayAgain} />;
-    }
-    return (
-      <div className="game-over-display">
-        <h2 className="game-over-title">🤖 GAME OVER 🤖</h2>
-        <p className="game-over-message">The round has finished. Your balances have been updated.</p>
-        <Button onClick={handlePlayAgain} className="retro-btn-primary action-btn mt-6">
-          Play Again
-        </Button>
-      </div>
-    );
+  if (isGameOver && gameResult) {
+    return <GameOverDisplay result={gameResult} onPlayAgain={handlePlayAgain} />;
   }
 
   if (isFinalizing) {
     return (
       <div className="transaction-status">
         <Loader2 className="loading-spinner" />
-        <p className="status-text">Finalizing round, waiting for blockchain confirmation...</p>
+        <div className="flex flex-col items-center gap-4">
+          <p className="status-text">Finalizing round, waiting for blockchain confirmation...</p>
+          {showResetButton && (
+            <>
+              <p className="text-xs text-gray-400">Taking too long? You can reset.</p>
+              <Button onClick={handlePlayAgain} className="retro-btn-warning">
+                Reset Game
+              </Button>
+            </>
+          )}
+        </div>
       </div>
     );
   }

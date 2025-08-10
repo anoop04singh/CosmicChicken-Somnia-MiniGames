@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { formatEther } from 'viem';
+import { cn } from '@/lib/utils';
 
 interface GameOverDisplayProps {
   result: {
@@ -17,13 +18,14 @@ const GameOverDisplay: React.FC<GameOverDisplayProps> = ({ result, onPlayAgain }
   const formattedPayout = formatEther(payout);
 
   return (
-    <div className="game-over-display">
+    <div className={cn(
+      "game-over-display",
+      playerWon ? "success" : "failure"
+    )}>
       <h2 className="game-over-title">{playerWon ? '🎉 YOU WON! 🎉' : '🤖 BOT WON 🤖'}</h2>
-      {playerWon ? (
-        <p className="game-over-message">You cashed out! Your winnings have been added to your withdrawable balance.</p>
-      ) : (
-        <p className="game-over-message">The bot ejected first or the time ran out. Better luck next time!</p>
-      )}
+      <p className="game-over-message">
+        {playerWon ? 'You cashed out! Your winnings have been added to your withdrawable balance.' : 'The bot ejected first or the time ran out. Better luck next time!'}
+      </p>
       <div className="game-over-stats">
         <div>
           <strong>Final Multiplier:</strong> {formattedMultiplier}x
