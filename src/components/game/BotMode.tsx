@@ -66,13 +66,58 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     reset: resetEjectContract
   } = useWriteContract();
 
+  const fetchAndSetGameResult = async (gameId: bigint, isAfterEjectConfirm = false) => {
+    const maxRetries = 5;
+    const retryDelay = 1000; // 1 second
+
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            const result = await readContract(config, {
+                address: contractAddress,
+                abi: contractAbi,
+                functionName: 'getBotGameResult',
+                args: [gameId],
+            });
+
+            const [playerWon, payout, finalMultiplier] = result;
+
+            if (playerWon) playSound('win'); else playSound('explosion');
+            setGameResult({ playerWon, payout, finalMultiplier });
+            setIsAwaitingEject(false);
+            setIsGameOver(true);
+            onGameWin();
+            return; // Success, exit the loop
+        } catch (err: any) {
+            if (err.shortMessage && err.shortMessage.includes('Game has not ended yet')) {
+                if (isAfterEjectConfirm && i < maxRetries - 1) {
+                    // After a successful eject, we expect the result to be available soon. Wait and retry.
+                    await new Promise(resolve => setTimeout(resolve, retryDelay));
+                    continue; // Go to the next iteration
+                } else {
+                    // This is the case for the timer running out, or if retries are exhausted after eject.
+                    setIsAwaitingEject(true);
+                    showError("Timer ended! Eject to finalize the round and see your result.");
+                    return;
+                }
+            } else {
+                // Handle other, unexpected errors
+                console.error('[BotMode] Error fetching game result:', err);
+                showError("Could not fetch game result. It will update shortly.");
+                return;
+            }
+        }
+    }
+    // If the loop finishes, all retries have failed.
+    showError("Failed to fetch game result after multiple attempts. Please check back shortly.");
+  };
+
   const { isLoading: isEjectConfirming } = useWaitForTransactionReceipt({
     hash: ejectHash,
     onSuccess: (data) => {
       if (data.status === 'success') {
         onBalanceUpdate();
         if (currentGameId) {
-          fetchAndSetGameResult(currentGameId);
+          fetchAndSetGameResult(currentGameId, true);
         }
         resetEjectContract();
       }
@@ -81,33 +126,6 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
       showError(error.shortMessage || error.message);
     }
   });
-
-  const fetchAndSetGameResult = async (gameId: bigint) => {
-    try {
-      const result = await readContract(config, {
-        address: contractAddress,
-        abi: contractAbi,
-        functionName: 'getBotGameResult',
-        args: [gameId],
-      });
-  
-      const [playerWon, payout, finalMultiplier] = result;
-  
-      if (playerWon) playSound('win'); else playSound('explosion');
-      setGameResult({ playerWon, payout, finalMultiplier });
-      setIsAwaitingEject(false);
-      setIsGameOver(true);
-      onGameWin();
-    } catch (err: any) {
-      if (err.shortMessage && err.shortMessage.includes('Game has not ended yet')) {
-        setIsAwaitingEject(true);
-        showError("Timer ended! Eject to finalize the round and see your result.");
-      } else {
-        console.error('[BotMode] Error fetching game result:', err);
-        showError("Could not fetch game result. It will update shortly.");
-      }
-    }
-  };
 
   // --- WAGMI HOOKS for reading contract data ---
   const { data: entryFeeData, isLoading: isLoadingFee } = useReadContract({
