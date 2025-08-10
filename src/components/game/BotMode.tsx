@@ -76,7 +76,6 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
         console.log("EVENT: State values for comparison:", { userAddress: address, storedGameId: currentGameId });
 
         const playerAddressMatch = player && address && (player as string).toLowerCase() === address.toLowerCase();
-        // THIS IS THE FIX: Compare against the stored currentGameId, not the live activeGameId which becomes 0.
         const gameIdMatch = currentGameId && gameId && BigInt(gameId as any) === currentGameId;
 
         if (playerAddressMatch && gameIdMatch) {
@@ -88,7 +87,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
           });
           setIsGameOver(true);
           setIsFinalizing(false);
-          setCurrentGameId(null); // Clear the stored ID for the next round
+          setCurrentGameId(null);
           
           onGameWin();
           onBalanceUpdate();
@@ -121,9 +120,14 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   const gameEntryFee = botGameInfo ? botGameInfo[4] : 0n;
 
   useEffect(() => {
-    if (prevIsActive.current === true && currentIsActive === false && !isGameOver) {
-      console.log("STATE: Game became inactive on-chain. Entering 'isFinalizing' state.");
-      setIsFinalizing(true);
+    if (prevIsActive.current === true && currentIsActive === false) {
+      console.log("STATE: Game has transitioned from active to inactive on-chain.");
+      if (!isGameOver) {
+        console.log("STATE: 'isGameOver' is false. Entering 'isFinalizing' state as a fallback.");
+        setIsFinalizing(true);
+      } else {
+        console.log("STATE: 'isGameOver' is true. Skipping 'isFinalizing' because the result was already processed by the event listener.");
+      }
     }
     prevIsActive.current = currentIsActive;
   }, [currentIsActive, isGameOver]);
@@ -194,6 +198,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     setIsFinalizing(false);
     setCurrentGameId(null);
     prevIsActive.current = undefined;
+    setShowResetButton(false);
     refetchActiveGameId();
   };
 
