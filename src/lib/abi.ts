@@ -1,4 +1,4 @@
-export const contractAddress = '0x465edB47F133e557D2F2946f00507543a88F0ea9'; // IMPORTANT: REPLACE WITH YOUR NEW V2 CONTRACT ADDRESS
+export const contractAddress = '0x465edB47F133e557D2F2946f00507543a88F0ea9'; // IMPORTANT: REPLACE WITH YOUR NEW V3 CONTRACT ADDRESS IF DIFFERENT
 
 export const contractAbi = [
 	{
@@ -223,19 +223,6 @@ export const contractAbi = [
 		"type": "event"
 	},
 	{
-		"inputs": [
-			{
-				"internalType": "address",
-				"name": "player",
-				"type": "address"
-			}
-		],
-		"name": "resetBotGame",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
 		"anonymous": false,
 		"inputs": [
 			{
@@ -309,26 +296,6 @@ export const contractAbi = [
 		"name": "startBotGame",
 		"outputs": [],
 		"stateMutability": "payable",
-		"type": "function"
-	},
-	{
-		"inputs": [],
-		"name": "startNewRound",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "address",
-				"name": "newOwner",
-				"type": "address"
-			}
-		],
-		"name": "transferOwnership",
-		"outputs": [],
-		"stateMutability": "nonpayable",
 		"type": "function"
 	},
 	{
@@ -557,6 +524,21 @@ export const contractAbi = [
 				"internalType": "bool",
 				"name": "gameEnded",
 				"type": "bool"
+			},
+			{
+				"internalType": "bool",
+				"name": "playerWon",
+				"type": "bool"
+			},
+			{
+				"internalType": "uint256",
+				"name": "payout",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "finalMultiplier",
+				"type": "uint256"
 			}
 		],
 		"stateMutability": "view",
@@ -679,58 +661,6 @@ export const contractAbi = [
 				"type": "uint256"
 			}
 		],
-		"name": "getBotGameStatus",
-		"outputs": [
-			{
-				"internalType": "bool",
-				"name": "isActive",
-				"type": "bool"
-			},
-			{
-				"internalType": "bool",
-				"name": "playerCanWin",
-				"type": "bool"
-			},
-			{
-				"internalType": "bool",
-				"name": "botHasEjected",
-				"type": "bool"
-			},
-			{
-				"internalType": "bool",
-				"name": "gameTimedOut",
-				"type": "bool"
-			},
-			{
-				"internalType": "string",
-				"name": "statusMessage",
-				"type": "string"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [],
-		"name": "getContractBalance",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "uint256",
-				"name": "gameId",
-				"type": "uint256"
-			}
-		],
 		"name": "getCurrentBotMultiplier",
 		"outputs": [
 			{
@@ -786,76 +716,6 @@ export const contractAbi = [
 		"type": "function"
 	},
 	{
-		"inputs": [],
-		"name": "getGameConfiguration",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "currentRoundDuration",
-				"type": "uint256"
-			},
-			{
-				"internalType": "uint256",
-				"name": "currentEntryFee",
-				"type": "uint256"
-			},
-			{
-				"internalType": "uint256",
-				"name": "minRoundDuration",
-				"type": "uint256"
-			},
-			{
-				"internalType": "uint256",
-				"name": "maxRoundDuration",
-				"type": "uint256"
-			},
-			{
-				"internalType": "uint256",
-				"name": "minEntryFee",
-				"type": "uint256"
-			},
-			{
-				"internalType": "uint256",
-				"name": "maxEntryFee",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [],
-		"name": "getOwner",
-		"outputs": [
-			{
-				"internalType": "address",
-				"name": "",
-				"type": "address"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "address",
-				"name": "player",
-				"type": "address"
-			}
-		],
-		"name": "getPlayerActiveBotGame",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
 		"inputs": [
 			{
 				"internalType": "address",
@@ -864,57 +724,6 @@ export const contractAbi = [
 			}
 		],
 		"name": "getPlayerWinnings",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "uint256",
-				"name": "gameId",
-				"type": "uint256"
-			}
-		],
-		"name": "getPotentialPayout",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "uint256",
-				"name": "roundId",
-				"type": "uint256"
-			}
-		],
-		"name": "getRoundPlayers",
-		"outputs": [
-			{
-				"internalType": "address[]",
-				"name": "",
-				"type": "address[]"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [],
-		"name": "getTimeRemaining",
 		"outputs": [
 			{
 				"internalType": "uint256",
