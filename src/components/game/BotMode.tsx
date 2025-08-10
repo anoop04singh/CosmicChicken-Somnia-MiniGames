@@ -15,6 +15,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   const { address } = useAccount();
   const animationFrameRef = useRef<number | null>(null);
 
+  // --- STATE MANAGEMENT ---
   const [isGameOver, setIsGameOver] = useState(false);
   const [gameResult, setGameResult] = useState<{
     playerWon: boolean;
@@ -23,10 +24,11 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   } | null>(null);
   const [currentGameId, setCurrentGameId] = useState<bigint | null>(null);
 
+  // --- WAGMI HOOKS for blockchain interaction ---
   const { data: hash, writeContract, isPending: isWritePending, reset: resetWriteContract } = useWriteContract();
-
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
 
+  // --- WAGMI HOOKS for reading contract data ---
   const { data: entryFeeData, isLoading: isLoadingFee } = useReadContract({
     address: contractAddress,
     abi: contractAbi,
@@ -55,17 +57,35 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     enabled: !!currentGameId && Number(currentGameId) > 0,
   });
 
-  // Set the current game ID from the initial fetch or when it changes
-  useEffect(() => {
-    if (activeGameId && activeGameId > 0n) {
-      setCurrentGameId(activeGameId);
-    } else {
-      // If activeGameId becomes 0, it means there's no active game.
-      setCurrentGameId(null);
-    }
-  }, [activeGameId]);
+  // --- CONSOLE LOGS for debugging ---
+  console.log("--- BotMode Render ---");
+  console.log("State:", {
+    isGameOver,
+    currentGameId: currentGameId?.toString(),
+    isWritePending,
+    isConfirming,
+  });
+  console.log("Active Game ID from hook:", activeGameId?.toString());
+  console.log("Bot Game Info from hook:", botGameInfo);
 
-  // Listen for the game end event from the contract
+
+  // --- EFFECT: Sync local currentGameId with on-chain activeGameId ---
+  useEffect(() => {
+    console.log(`EFFECT (activeGameId): Value is ${activeGameId?.toString()}. Current local game ID is ${currentGameId?.toString()}`);
+    if (activeGameId && activeGameId > 0n) {
+      if (currentGameId !== activeGameId) {
+        console.log(`EFFECT (activeGameId): Updating local game ID to ${activeGameId.toString()}`);
+        setCurrentGameId(activeGameId);
+      }
+    } else {
+      if (currentGameId !== null) {
+        console.log("EFFECT (activeGameId): No active game on-chain, setting local game ID to null.");
+        setCurrentGameId(null);
+      }
+    }
+  }, [activeGameId, currentGameId]);
+
+  // --- EFFECT: Listen for the game end event from the contract ---
   useWatchContractEvent({
     address: contractAddress,
     abi: contractAbi,
@@ -73,8 +93,9 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     onLogs(logs) {
       logs.forEach(log => {
         const { gameId, player, playerWon, payout, finalMultiplier } = log.args;
+        console.log(`EVENT (BotGameEnded): Received for game ${gameId}. Current game is ${currentGameId}.`);
         if (player === address && gameId === currentGameId) {
-          console.log("EVENT: BotGameEnded event received for current game.", log.args);
+          console.log("EVENT (BotGameEnded): Matched current player and game. Setting game over.");
           setGameResult({ 
             playerWon: playerWon as boolean, 
             payout: payout as bigint, 
@@ -89,16 +110,22 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     },
   });
 
-  // Polling as a backup to keep UI in sync
+  // --- EFFECT: Poll for game info as a backup ---
   useEffect(() => {
     if (currentGameId) {
+      console.log(`EFFECT (Polling): Starting polling for game ID ${currentGameId}.`);
       const interval = setInterval(() => {
+        console.log(`POLL: Refetching bot game info for ${currentGameId}`);
         refetchBotGameInfo();
       }, 2000);
-      return () => clearInterval(interval);
+      return () => {
+        console.log(`EFFECT (Polling): Stopping polling for game ID ${currentGameId}.`);
+        clearInterval(interval);
+      };
     }
   }, [currentGameId, refetchBotGameInfo]);
 
+  // --- UI STATE DERIVATION ---
   const [displayMultiplier, setDisplayMultiplier] = useState(1.00);
   const [displayTimeRemaining, setDisplayTimeRemaining] = useState(BOT_ROUND_DURATION);
   const [displayPayout, setDisplayPayout] = useState<bigint | null>(null);
@@ -107,7 +134,9 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   const startTime = botGameInfo ? botGameInfo[2] : 0n;
   const gameEntryFee = botGameInfo ? botGameInfo[3] : 0n;
 
+  // --- HANDLERS ---
   const handleStart = () => {
+    console.log("ACTION: handleStart called.");
     if (!entryFeeData) return;
     resetWriteContract();
     writeContract({
@@ -122,6 +151,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   };
 
   const handleEject = () => {
+    console.log("ACTION: handleEject called.");
     resetWriteContract();
     writeContract({
       address: contractAddress,
@@ -134,15 +164,17 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   };
   
   const handlePlayAgain = () => {
+    console.log("ACTION: handlePlayAgain called. Resetting state.");
     setIsGameOver(false);
     setGameResult(null);
     setCurrentGameId(null);
     refetchActiveGameId();
   };
 
-  // After a transaction is confirmed, refetch the active game state
+  // --- EFFECT: Handle transaction confirmation ---
   useEffect(() => {
     if (isConfirmed) {
+      console.log("EFFECT (isConfirmed): Transaction confirmed. Refetching active game ID.");
       showSuccess("Transaction confirmed!");
       refetchActiveGameId();
       onBalanceUpdate();
@@ -150,8 +182,9 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     }
   }, [isConfirmed, refetchActiveGameId, onBalanceUpdate, resetWriteContract]);
 
-  // Animation loop for the multiplier
+  // --- EFFECT: Animation loop for the multiplier ---
   useEffect(() => {
+    console.log(`EFFECT (Animation): Running. currentIsActive=${currentIsActive}, startTime=${startTime}`);
     const loop = () => {
       const elapsed = (Date.now() / 1000) - Number(startTime);
       if (elapsed < 0) {
@@ -176,8 +209,10 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     };
 
     if (currentIsActive && startTime > 0) {
+      console.log("EFFECT (Animation): Starting animation loop.");
       animationFrameRef.current = requestAnimationFrame(loop);
     } else {
+      console.log("EFFECT (Animation): Not starting loop. Resetting display values.");
       setDisplayMultiplier(1.00);
       setDisplayTimeRemaining(BOT_ROUND_DURATION);
       setDisplayPayout(entryFeeData ?? null);
@@ -230,15 +265,15 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
 
       <div className="game-status">
         <div className="action-buttons">
-          {!currentGameId ? (
+          {currentIsActive ? (
+            <Button onClick={handleEject} disabled={isPending} className="retro-btn-success action-btn cashout-btn">
+              {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Cash Out!
+            </Button>
+          ) : (
             <Button onClick={handleStart} disabled={isPending || isLoadingFee} className="retro-btn-warning action-btn pulse">
               {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Start Bot Game ({formattedEntryFee} STT)
-            </Button>
-          ) : (
-            <Button onClick={handleEject} disabled={isPending || !currentIsActive} className="retro-btn-success action-btn cashout-btn">
-              {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Cash Out!
             </Button>
           )}
         </div>
