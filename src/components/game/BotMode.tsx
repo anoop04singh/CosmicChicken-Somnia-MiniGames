@@ -30,8 +30,6 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     hash,
     onSuccess: (data) => {
       if (data.status === 'success') {
-        // This primarily handles the EJECT transaction confirmation.
-        // The BotGameEnded event will manage the final state change.
         onBalanceUpdate();
         resetWriteContract();
       }
@@ -51,7 +49,6 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     functionName: 'BOT_MAX_MULTIPLIER',
   });
 
-  // This is still useful for when the user reloads the page with an active game.
   const { data: activeGameId, refetch: refetchActiveGameId } = useReadContract({
     address: contractAddress,
     abi: contractAbi,
@@ -60,12 +57,16 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     enabled: !!address,
   });
 
-  const { data: botGameInfo, refetch: refetchBotGameInfo } = useReadContract({
+  const { data: botGameInfo } = useReadContract({
     address: contractAddress,
     abi: contractAbi,
     functionName: 'getBotGameInfo',
     args: [currentGameId as bigint],
     enabled: !!currentGameId && Number(currentGameId) > 0,
+    // Poll for game start confirmation to combat RPC lag.
+    // If we have a game ID but the contract says it's not active, poll every second.
+    // Once it becomes active, the polling will stop.
+    refetchInterval: (query) => (query.state.data && !query.state.data[4] ? 1000 : false),
   });
 
   // --- EFFECT: Sync with on-chain state on page load/refresh ---
@@ -85,7 +86,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
         if (log.args.player === address) {
           showSuccess("Your game has started!");
           setCurrentGameId(log.args.gameId as bigint);
-          onBalanceUpdate(); // The entry fee has been deducted.
+          onBalanceUpdate();
           resetWriteContract();
         }
       });
@@ -113,7 +114,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
           });
           setIsGameOver(true);
           setCurrentGameId(null);
-          onGameWin(); // This will refetch winnings
+          onGameWin();
           resetMultiplierSound();
         }
       });
@@ -174,7 +175,8 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   // --- EFFECT: Animation loop for the multiplier ---
   useEffect(() => {
     const loop = () => {
-      if (!startTime || startTime === 0n) {
+      if (!startTime || startTime === 0n || !currentIsActive) {
+        if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
         return;
       }
       const elapsed = (Date.now() / 1000) - Number(startTime);
@@ -196,18 +198,22 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
         const payout = (gameEntryFee * BigInt(Math.floor(newMultiplier * 10000))) / 10000n;
         setDisplayPayout(payout);
       }
-      if (newTimeRemaining > 0 && newMultiplier < maxMultiplier) {
+      if (newTimeRemaining > 0 && newMultiplier < maxMultiplier && currentIsActive) {
         animationFrameRef.current = requestAnimationFrame(loop);
+      } else {
+        if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       }
     };
 
     if (currentIsActive && startTime > 0) {
-      refetchBotGameInfo();
       animationFrameRef.current = requestAnimationFrame(loop);
     } else {
       setDisplayMultiplier(1.00);
       setDisplayTimeRemaining(BOT_ROUND_DURATION);
       setDisplayPayout(entryFeeData ?? null);
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
     }
 
     return () => {
@@ -215,7 +221,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [currentIsActive, startTime, gameEntryFee, maxMultiplierData, entryFeeData, playMultiplierSound, refetchBotGameInfo]);
+  }, [currentIsActive, startTime, gameEntryFee, maxMultiplierData, entryFeeData, playMultiplierSound]);
 
   const isPending = isWritePending || isConfirming;
   const formattedEntryFee = entryFeeData ? formatEther(entryFeeData as bigint) : '...';
