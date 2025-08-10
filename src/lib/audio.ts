@@ -1,5 +1,5 @@
 let audioCtx: AudioContext | null = null;
-let isMuted = true;
+let isMuted = false;
 let mainGainNode: GainNode | null = null;
 
 // Must be called on first user interaction
