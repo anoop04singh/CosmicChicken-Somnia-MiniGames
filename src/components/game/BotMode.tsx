@@ -6,8 +6,15 @@ import { Loader2 } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 import { showError, showSuccess } from '@/utils/toast';
 import GameOverDisplay from './GameOverDisplay';
+import { createPublicClient, http, parseAbiItem } from 'viem';
+import { somniaTestnet } from '@/lib/wagmi';
 
 const BOT_ROUND_DURATION = 30; // seconds
+
+const publicClient = createPublicClient({
+  chain: somniaTestnet,
+  transport: http(),
+});
 
 const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBalanceUpdate: () => void; }) => {
   const { address } = useAccount();
@@ -133,19 +140,55 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   }, [currentIsActive, isGameOver]);
 
   useEffect(() => {
-    let timeout: NodeJS.Timeout;
-    if (isFinalizing) {
-      setShowResetButton(false);
-      console.log("STATE: 'isFinalizing' is true. Setting 15s timeout for manual reset button.");
-      timeout = setTimeout(() => {
-        console.log("STATE: 15s timeout elapsed. Showing reset button as a fallback.");
-        setShowResetButton(true);
-      }, 15000);
-    } else {
-      setShowResetButton(false);
+    if (isFinalizing && currentGameId && address) {
+      console.log("FALLBACK: Entered finalizing state. Will attempt to fetch logs directly if event is missed.");
+      
+      const fetchGameResultFallback = async () => {
+        try {
+          console.log(`FALLBACK: Querying logs for gameId: ${currentGameId}`);
+          const latestBlock = await publicClient.getBlockNumber();
+          const fromBlock = latestBlock > 2000n ? latestBlock - 2000n : 0n;
+
+          const logs = await publicClient.getLogs({
+            address: contractAddress,
+            event: parseAbiItem('event BotGameEnded(uint256 indexed gameId, address indexed player, bool playerWon, uint256 payout, uint256 finalMultiplier)'),
+            args: {
+              gameId: currentGameId,
+              player: address,
+            },
+            fromBlock: fromBlock,
+            toBlock: 'latest',
+          });
+  
+          if (logs.length > 0) {
+            console.log("FALLBACK: Found result log!", logs[0].args);
+            const { playerWon, payout, finalMultiplier } = logs[0].args;
+            setGameResult({ 
+              playerWon: playerWon as boolean, 
+              payout: payout as bigint, 
+              finalMultiplier: finalMultiplier as bigint 
+            });
+            setIsGameOver(true);
+            setIsFinalizing(false);
+            setCurrentGameId(null);
+            onGameWin();
+            onBalanceUpdate();
+          } else {
+            console.log("FALLBACK: No result log found after query. Assuming loss and showing reset button.");
+            setShowResetButton(true);
+          }
+        } catch (error) {
+          console.error("FALLBACK_ERROR: Error fetching logs:", error);
+          setShowResetButton(true);
+        }
+      };
+  
+      // Wait a couple of seconds to give the event listener a chance first
+      const fallbackTimer = setTimeout(fetchGameResultFallback, 3000);
+  
+      return () => clearTimeout(fallbackTimer);
     }
-    return () => clearTimeout(timeout);
-  }, [isFinalizing]);
+  }, [isFinalizing, currentGameId, address, onGameWin, onBalanceUpdate]);
 
   const handleStart = () => {
     console.log("ACTION: handleStart called.");
@@ -153,7 +196,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
       console.error("ACTION_ERROR: Cannot start, entry fee not loaded.");
       return;
     }
-    resetWriteContract();
+    handlePlayAgain(); // Reset state before starting a new game
     writeContract({
       address: contractAddress,
       abi: contractAbi,
@@ -199,6 +242,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     setCurrentGameId(null);
     prevIsActive.current = undefined;
     setShowResetButton(false);
+    resetWriteContract();
     refetchActiveGameId();
   };
 
