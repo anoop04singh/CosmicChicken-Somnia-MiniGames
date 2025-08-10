@@ -232,7 +232,7 @@ contract CosmicChickenV2 {
                 finalMultiplier = BOT_MAX_MULTIPLIER;
             }
             payout = (game.entryFee * finalMultiplier) / 100;
-            playerWinnings[msg.sender] += payout;
+            payable(msg.sender).transfer(payout); // Direct transfer
         } else {
             finalMultiplier = getCurrentBotMultiplier(gameId);
             payout = 0;

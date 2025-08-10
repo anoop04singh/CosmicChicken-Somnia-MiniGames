@@ -176,9 +176,10 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
         console.log("DATA_FETCH: Refetched active game ID after confirmation.");
         refetchBotGameInfo();
       });
+      onBalanceUpdate();
       resetWriteContract();
     }
-  }, [isConfirmed, hash, refetchActiveGameId, refetchBotGameInfo, resetWriteContract]);
+  }, [isConfirmed, hash, refetchActiveGameId, refetchBotGameInfo, resetWriteContract, onBalanceUpdate]);
 
   useEffect(() => {
     const loop = () => {
