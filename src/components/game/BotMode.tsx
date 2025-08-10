@@ -67,8 +67,8 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   } = useWriteContract();
 
   const fetchAndSetGameResult = async (gameId: bigint, isAfterEjectConfirm = false) => {
-    const maxRetries = 5;
-    const retryDelay = 1000; // 1 second
+    const maxRetries = 10; // Increased retries
+    const retryDelay = 500; // Polling every 0.5 seconds
 
     for (let i = 0; i < maxRetries; i++) {
         try {
@@ -93,8 +93,8 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
                     // After a successful eject, we expect the result to be available soon. Wait and retry.
                     await new Promise(resolve => setTimeout(resolve, retryDelay));
                     continue; // Go to the next iteration
-                } else {
-                    // This is the case for the timer running out, or if retries are exhausted after eject.
+                } else if (!isAfterEjectConfirm) {
+                    // This is the case for the timer running out.
                     setIsAwaitingEject(true);
                     showError("Timer ended! Eject to finalize the round and see your result.");
                     return;
