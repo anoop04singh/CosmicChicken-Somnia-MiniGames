@@ -42,12 +42,6 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     functionName: 'BOT_MAX_MULTIPLIER',
   });
 
-  const { data: botGameCounter, refetch: refetchCounter } = useReadContract({
-    address: contractAddress,
-    abi: contractAbi,
-    functionName: 'botGameCounter',
-  });
-
   const { data: activeGameId, refetch: refetchActiveGameId } = useReadContract({
     address: contractAddress,
     abi: contractAbi,
@@ -74,28 +68,42 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   // --- EFFECT: Get Game ID after transaction confirmation ---
   useEffect(() => {
     if (isConfirmed && isStartingGame) {
-      showSuccess("Transaction confirmed! Starting game...");
+      showSuccess("Transaction confirmed! Fetching your game...");
       
-      refetchCounter().then(result => {
+      // Use the reliable player-specific function to get the game ID
+      refetchActiveGameId().then(result => {
         const newGameId = result.data;
         if (newGameId && newGameId > 0n) {
           setCurrentGameId(newGameId);
         } else {
-          showError("Could not start the game. Please try again.");
+          // It can take a moment for the contract state to be indexed by the RPC.
+          // We'll try one more time after a short delay.
+          setTimeout(() => {
+            refetchActiveGameId().then(retryResult => {
+              const retryGameId = retryResult.data;
+              if (retryGameId && retryGameId > 0n) {
+                setCurrentGameId(retryGameId);
+              } else {
+                showError("Could not find your active game. Please check your wallet or try again.");
+              }
+            })
+          }, 2500); // 2.5 second delay
         }
         setIsStartingGame(false);
       }).catch(err => {
-        console.error("Error fetching botGameCounter", err);
+        console.error("Error fetching active game ID:", err);
+        showError("There was an error fetching your game data.");
         setIsStartingGame(false);
       });
 
       onBalanceUpdate();
       resetWriteContract();
     } else if (isConfirmed) {
+        // This handles other confirmed transactions like ejecting
         onBalanceUpdate();
         resetWriteContract();
     }
-  }, [isConfirmed, isStartingGame, refetchCounter, onBalanceUpdate, resetWriteContract]);
+  }, [isConfirmed, isStartingGame, refetchActiveGameId, onBalanceUpdate, resetWriteContract]);
 
   // --- EVENT LISTENER: Game Ended ---
   useWatchContractEvent({
