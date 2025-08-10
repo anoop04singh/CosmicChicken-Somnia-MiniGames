@@ -66,8 +66,8 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     reset: resetEjectContract
   } = useWriteContract();
 
-  const fetchAndSetGameResult = async (gameId: bigint, isAfterEjectConfirm = false) => {
-    const maxRetries = 10; // Increased retries
+  const fetchAndSetGameResult = async (gameId: bigint, shouldPollForResult = false) => {
+    const maxRetries = 20; // More retries to account for network latency
     const retryDelay = 500; // Polling every 0.5 seconds
 
     for (let i = 0; i < maxRetries; i++) {
@@ -89,25 +89,21 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
             return; // Success, exit the loop
         } catch (err: any) {
             if (err.shortMessage && err.shortMessage.includes('Game has not ended yet')) {
-                if (isAfterEjectConfirm && i < maxRetries - 1) {
-                    // After a successful eject, we expect the result to be available soon. Wait and retry.
+                if (shouldPollForResult && i < maxRetries - 1) {
                     await new Promise(resolve => setTimeout(resolve, retryDelay));
-                    continue; // Go to the next iteration
-                } else if (!isAfterEjectConfirm) {
-                    // This is the case for the timer running out.
+                    continue;
+                } else if (!shouldPollForResult) {
                     setIsAwaitingEject(true);
                     showError("Timer ended! Eject to finalize the round and see your result.");
                     return;
                 }
             } else {
-                // Handle other, unexpected errors
                 console.error('[BotMode] Error fetching game result:', err);
                 showError("Could not fetch game result. It will update shortly.");
                 return;
             }
         }
     }
-    // If the loop finishes, all retries have failed.
     showError("Failed to fetch game result after multiple attempts. Please check back shortly.");
   };
 
@@ -116,9 +112,6 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     onSuccess: (data) => {
       if (data.status === 'success') {
         onBalanceUpdate();
-        if (currentGameId) {
-          fetchAndSetGameResult(currentGameId, true);
-        }
         resetEjectContract();
       }
     },
@@ -245,7 +238,12 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
       abi: contractAbi,
       functionName: 'ejectFromBotGame',
     }, {
-      onSuccess: (hash) => showSuccess(`Eject transaction sent: ${hash.slice(0,10)}...`),
+      onSuccess: (hash) => {
+        showSuccess(`Eject transaction sent: ${hash.slice(0,10)}...`);
+        if (currentGameId) {
+          fetchAndSetGameResult(currentGameId, true);
+        }
+      },
       onError: (error) => showError(error.shortMessage || error.message)
     });
   };
