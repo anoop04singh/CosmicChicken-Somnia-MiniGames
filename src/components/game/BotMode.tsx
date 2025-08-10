@@ -58,7 +58,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
 
   useEffect(() => {
     if (activeGameId && activeGameId > 0n && activeGameId !== currentGameId) {
-      console.log(`STATE: New active game detected. Game ID: ${activeGameId}. Storing it.`);
+      console.log(`STATE: New active game detected. Game ID: ${activeGameId}. Storing it in state.`);
       setCurrentGameId(activeGameId);
     }
   }, [activeGameId, currentGameId]);
@@ -73,9 +73,10 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
         const { gameId, player, playerWon, payout, finalMultiplier } = log.args;
         
         console.log("EVENT: Processing log with args:", { gameId, player, playerWon, payout, finalMultiplier });
-        console.log("EVENT: State values for comparison:", { userAddress: address, currentGameId: currentGameId });
+        console.log("EVENT: State values for comparison:", { userAddress: address, storedGameId: currentGameId });
 
         const playerAddressMatch = player && address && (player as string).toLowerCase() === address.toLowerCase();
+        // THIS IS THE FIX: Compare against the stored currentGameId, not the live activeGameId which becomes 0.
         const gameIdMatch = currentGameId && gameId && BigInt(gameId as any) === currentGameId;
 
         if (playerAddressMatch && gameIdMatch) {
@@ -87,7 +88,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
           });
           setIsGameOver(true);
           setIsFinalizing(false);
-          setCurrentGameId(null);
+          setCurrentGameId(null); // Clear the stored ID for the next round
           
           onGameWin();
           onBalanceUpdate();
@@ -104,7 +105,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
                 eventPlayer: player, 
                 userAddress: address,
                 eventGameId: gameId,
-                stateGameId: currentGameId,
+                storedGameId: currentGameId,
             });
         }
       });
@@ -121,7 +122,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
 
   useEffect(() => {
     if (prevIsActive.current === true && currentIsActive === false && !isGameOver) {
-      console.log("STATE: Game became inactive. Entering 'isFinalizing' state.");
+      console.log("STATE: Game became inactive on-chain. Entering 'isFinalizing' state.");
       setIsFinalizing(true);
     }
     prevIsActive.current = currentIsActive;
@@ -131,9 +132,9 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
     let timeout: NodeJS.Timeout;
     if (isFinalizing) {
       setShowResetButton(false);
-      console.log("STATE: 'isFinalizing' is true. Setting 15s timeout for reset button.");
+      console.log("STATE: 'isFinalizing' is true. Setting 15s timeout for manual reset button.");
       timeout = setTimeout(() => {
-        console.log("STATE: 15s timeout elapsed. Showing reset button.");
+        console.log("STATE: 15s timeout elapsed. Showing reset button as a fallback.");
         setShowResetButton(true);
       }, 15000);
     } else {
@@ -144,7 +145,10 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
 
   const handleStart = () => {
     console.log("ACTION: handleStart called.");
-    if (!entryFeeData) return;
+    if (!entryFeeData) {
+      console.error("ACTION_ERROR: Cannot start, entry fee not loaded.");
+      return;
+    }
     resetWriteContract();
     writeContract({
       address: contractAddress,
@@ -184,7 +188,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
   };
   
   const handlePlayAgain = () => {
-    console.log("ACTION: handlePlayAgain called. Resetting game state.");
+    console.log("ACTION: handlePlayAgain called. Resetting all game state.");
     setIsGameOver(false);
     setGameResult(null);
     setIsFinalizing(false);
@@ -195,7 +199,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
 
   useEffect(() => {
     if (isConfirmed) {
-      console.log("TX_CONFIRMED: Transaction has been confirmed by the network.");
+      console.log(`TX_CONFIRMED: Transaction with hash ${hash} has been confirmed.`);
       showSuccess("Transaction confirmed!");
       refetchActiveGameId().then(() => {
         console.log("DATA_FETCH: Refetched active game ID after confirmation.");
@@ -203,7 +207,7 @@ const BotMode = ({ onGameWin, onBalanceUpdate }: { onGameWin: () => void; onBala
       });
       resetWriteContract();
     }
-  }, [isConfirmed, refetchActiveGameId, refetchBotGameInfo, resetWriteContract]);
+  }, [isConfirmed, hash, refetchActiveGameId, refetchBotGameInfo, resetWriteContract]);
 
   useEffect(() => {
     const loop = () => {
